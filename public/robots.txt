@@ -13,4 +13,4 @@ Allow: /
 User-agent: *
 Allow: /
 
-Sitemap: https://tagada.app/sitemap.xml
+Sitemap: https://settleswiftly.com/sitemap.xml

@@ -7,7 +7,7 @@ import { signUpSchema } from "@/lib/schemas/auth.schema";
 
 export const Route = createFileRoute("/signup")({
   component: SignUpPage,
-  head: () => ({ meta: [{ title: "Create your account — Tagada" }] }),
+  head: () => ({ meta: [{ title: "Create your account — Settle Swiftly" }] }),
 });
 
 function SignUpPage() {

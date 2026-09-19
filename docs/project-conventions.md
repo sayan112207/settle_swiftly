@@ -7,7 +7,7 @@ editor-specific directory.
 
 ---
 
-## Tagada
+## Settle Swiftly
 
 A B2B collections tool. Small businesses import their unpaid invoices and the
 product chases the customers who owe them money. It sits on top of Tally and

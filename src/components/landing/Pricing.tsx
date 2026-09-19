@@ -1,4 +1,4 @@
-import { focusEarlyAccess } from "./cta";
+import { Link } from "@tanstack/react-router";
 
 const FEATURED_PLAN = "Pro";
 
@@ -23,6 +23,7 @@ const pricingDefs = [
   },
 ];
 
+/** Pricing plans, each with a "Get started" link to sign-up. */
 export function Pricing() {
   return (
     <section
@@ -66,13 +67,12 @@ export function Pricing() {
               ))}
             </ul>
 
-            <button
-              type="button"
-              onClick={focusEarlyAccess}
-              className="mt-6 w-full rounded-[10px] border border-line bg-surface p-[13px] text-sm font-semibold text-ink"
+            <Link
+              to="/signup"
+              className="mt-6 block w-full rounded-[10px] border border-line bg-surface p-[13px] text-center text-sm font-semibold text-ink"
             >
-              Get early access
-            </button>
+              Get started
+            </Link>
           </div>
         ))}
       </div>

@@ -4,7 +4,7 @@
  */
 
 /** Used in prose: page titles, headings, transactional copy. */
-export const PRODUCT_NAME = "Tagada";
+export const PRODUCT_NAME = "Settle Swiftly";
 
 /**
  * Used as the logo lockup in the header and footer.
@@ -13,4 +13,4 @@ export const PRODUCT_NAME = "Tagada";
  * a visual treatment that can be restyled or abbreviated without changing how
  * the product is referred to in sentences.
  */
-export const WORDMARK = "Tagada";
+export const WORDMARK = "Settle Swiftly";

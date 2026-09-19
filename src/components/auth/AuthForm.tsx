@@ -47,7 +47,7 @@ const copy = {
     submit: "Sign in",
     pending: "Signing in…",
     googleLabel: "Continue with Google",
-    altPrompt: "New to Tagada?",
+    altPrompt: "New to Settle Swiftly?",
     altHref: "/signup",
     altLabel: "Create an account",
     autoComplete: "current-password",
@@ -65,6 +65,7 @@ const copy = {
   },
 } as const;
 
+/** The shared sign-in / sign-up card: Google button, email and password fields, and the link to the other mode. */
 export function AuthForm({ mode, onSubmit, notice, initialError = null }: Props) {
   const t = copy[mode];
   const [email, setEmail] = useState("");
@@ -115,7 +116,7 @@ export function AuthForm({ mode, onSubmit, notice, initialError = null }: Props)
           to="/"
           className="mb-8 block text-center text-lg font-semibold tracking-tight text-ink"
         >
-          Tagada
+          Settle Swiftly
         </Link>
 
         <div className="rounded-[14px] border border-line bg-card p-7 shadow-sm">

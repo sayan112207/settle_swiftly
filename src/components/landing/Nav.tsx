@@ -1,7 +1,5 @@
 import { Link } from "@tanstack/react-router";
 
-import { focusEarlyAccess } from "./cta";
-
 const links = [
   { href: "#how", label: "How it works" },
   { href: "#product", label: "Product" },
@@ -9,6 +7,7 @@ const links = [
   { href: "#faq", label: "FAQ" },
 ];
 
+/** Sticky landing nav with section links, "Sign in" and "Get started". */
 export function Nav() {
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-[rgba(247,247,243,0.82)] backdrop-blur-[10px]">
@@ -18,9 +17,11 @@ export function Nav() {
       >
         <a href="#top" className="flex items-center gap-2.5">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-ink text-sm font-bold text-white">
-            T
+            S
           </span>
-          <span className="text-[17px] font-semibold tracking-[-0.01em] text-ink">Tagada</span>
+          <span className="text-[17px] font-semibold tracking-[-0.01em] text-ink">
+            Settle Swiftly
+          </span>
         </a>
 
         <div className="flex items-center gap-8 max-[760px]:hidden">
@@ -42,13 +43,12 @@ export function Nav() {
           >
             Sign in
           </Link>
-          <button
-            type="button"
-            onClick={focusEarlyAccess}
+          <Link
+            to="/signup"
             className="rounded-[10px] bg-brand px-5 py-2.5 text-sm font-semibold text-white transition-transform duration-150 hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-deep"
           >
-            Get early access
-          </button>
+            Get started
+          </Link>
         </div>
       </nav>
     </header>

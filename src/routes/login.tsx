@@ -19,7 +19,7 @@ export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): { reason?: string } =>
     typeof search["reason"] === "string" ? { reason: search["reason"] } : {},
   component: LoginPage,
-  head: () => ({ meta: [{ title: "Sign in — Tagada" }] }),
+  head: () => ({ meta: [{ title: "Sign in — Settle Swiftly" }] }),
 });
 
 function LoginPage() {

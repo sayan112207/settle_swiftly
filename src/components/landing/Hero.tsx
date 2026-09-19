@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent } from "react";
-import { focusEarlyAccess } from "./cta";
+import { Link } from "@tanstack/react-router";
 
 const heroStates = [
   { badge: "Awaiting payment", badgeGreen: false, step: -1 },
@@ -15,6 +15,7 @@ const timelineLabels = ["Invoice sent", "Reminder", "WhatsApp", "Paid"];
 const progressByStep = [6, 30, 60, 100];
 const CYCLE_MS = 2100;
 
+/** Landing hero: headline, the "Get started" call to action, and the animated invoice preview. */
 export function Hero() {
   const [phase, setPhase] = useState(0);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
@@ -76,17 +77,17 @@ export function Hero() {
         </h1>
 
         <p className="mx-auto mt-6 max-w-[560px] text-[19px] leading-[1.6] text-ink-muted">
-          Tagada sends the invoice, follows up automatically, and stops the moment you get paid.
+          Settle Swiftly sends the invoice, follows up automatically, and stops the moment you get
+          paid.
         </p>
 
         <div className="mt-8 flex items-center justify-center gap-3.5">
-          <button
-            type="button"
-            onClick={focusEarlyAccess}
+          <Link
+            to="/signup"
             className="rounded-xl bg-brand px-[26px] py-3.5 text-[15px] font-semibold text-white transition-transform duration-150 hover:scale-[1.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-deep"
           >
-            Get early access
-          </button>
+            Get started
+          </Link>
           <a
             href="#how"
             className="flex items-center gap-1.5 rounded-xl border border-line bg-surface px-[22px] py-3.5 text-[15px] font-semibold text-ink"

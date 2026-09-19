@@ -4,6 +4,7 @@ const omniDefs = [
   { icon: "📱", name: "SMS", status: "Sent ✓" },
 ];
 
+/** Landing section showing the channels reminders go out on: email, WhatsApp and SMS. */
 export function Channels() {
   return (
     <section
@@ -19,7 +20,7 @@ export function Channels() {
 
       <div className="relative mt-20 flex flex-col items-center">
         <div className="rounded-full border border-line bg-surface px-7 py-3.5 text-[15px] font-semibold shadow-[0_10px_30px_rgba(17,17,17,0.06)]">
-          Tagada
+          Settle Swiftly
         </div>
 
         <svg

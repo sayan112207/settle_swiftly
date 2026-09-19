@@ -3,6 +3,7 @@ import { useInView } from "@/hooks/use-in-view";
 const withoutNodes = [0, 16.6, 33, 50, 66, 100];
 const withNodes = [0, 33, 66, 100];
 
+/** Landing section contrasting chasing by hand with letting Settle Swiftly chase. */
 export function Comparison() {
   const { ref, inView } = useInView<HTMLElement>(0.35);
 
@@ -19,7 +20,9 @@ export function Comparison() {
       </h2>
 
       <div className="mt-14">
-        <div className="text-xs font-bold tracking-[0.08em] text-ink-faint">WITHOUT TAGADA</div>
+        <div className="text-xs font-bold tracking-[0.08em] text-ink-faint">
+          WITHOUT SETTLE SWIFTLY
+        </div>
         <div className="relative mt-7 h-0.5 bg-line">
           <div
             className="absolute top-0 left-0 h-full bg-line-dim"
@@ -44,7 +47,9 @@ export function Comparison() {
       </div>
 
       <div className="mt-9 rounded-[20px] border border-line bg-surface p-9">
-        <div className="text-xs font-bold tracking-[0.08em] text-brand-deep">WITH TAGADA</div>
+        <div className="text-xs font-bold tracking-[0.08em] text-brand-deep">
+          WITH SETTLE SWIFTLY
+        </div>
         <div className="relative mt-7 h-[3px] rounded-full bg-line">
           <div
             className="absolute top-0 left-0 h-full rounded-full"

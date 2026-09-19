@@ -11,6 +11,7 @@ const memoryNotes = [
 ];
 const cashHeights = [30, 55, 40, 70, 50, 85, 65];
 
+/** Landing feature grid. `countsStarted` grows the cash-flow chart bars from flat to their real heights. */
 export function Features({ countsStarted = false }: { countsStarted?: boolean }) {
   return (
     <section aria-labelledby="auto-heading" className="mx-auto max-w-[1160px] px-8 pt-15 pb-25">
@@ -67,7 +68,9 @@ export function Features({ countsStarted = false }: { countsStarted?: boolean })
 
         <div className="rounded-2xl border border-line bg-surface p-7">
           <h3 className="text-lg font-[650]">Client memory</h3>
-          <p className="mt-1.5 text-sm text-ink-muted">Tagada remembers how each client behaves.</p>
+          <p className="mt-1.5 text-sm text-ink-muted">
+            Settle Swiftly remembers how each client behaves.
+          </p>
           <div className="mt-5 flex flex-col gap-2">
             {memoryNotes.map((note) => (
               <div

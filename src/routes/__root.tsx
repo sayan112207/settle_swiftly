@@ -77,14 +77,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Tagada — Automated Invoicing & Payment Collection" },
+      { title: "Settle Swiftly — Automated Invoicing & Payment Collection" },
       {
         name: "description",
         content:
-          "Tagada sends invoices, automatically follows up with clients, and stops when you're paid. Automate payment reminders across email, WhatsApp and SMS.",
+          "Settle Swiftly sends invoices, automatically follows up with clients, and stops when you're paid. Automate payment reminders across email, WhatsApp and SMS.",
       },
-      { name: "author", content: "Tagada" },
-      { property: "og:title", content: "Tagada — Automated Invoicing & Payment Collection" },
+      { name: "author", content: "Settle Swiftly" },
+      {
+        property: "og:title",
+        content: "Settle Swiftly — Automated Invoicing & Payment Collection",
+      },
       {
         property: "og:description",
         content:

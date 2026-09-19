@@ -24,7 +24,7 @@ import {
  * exactly the way a bad payload would break in production, so mocks cannot
  * quietly encode a shape the backend will never send.
  *
- * Unlike the auth, orgs and waitlist services these are plain async functions
+ * Unlike the auth and orgs services these are plain async functions
  * rather than `createServerFn` handlers. Those wrap Supabase and need the
  * server-only client; this API needs no secret, and the mock delay only makes
  * sense on the client where the loading states actually render.

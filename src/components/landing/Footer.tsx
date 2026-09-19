@@ -23,12 +23,13 @@ const columns = [
   },
 ];
 
+/** Site footer with the wordmark, section links and copyright. */
 export function Footer() {
   return (
     <footer className="border-t border-line px-8 py-14">
       <div className="mx-auto grid max-w-[1280px] grid-cols-[1.4fr_1fr_1fr_1fr] gap-8 max-[700px]:grid-cols-2 max-[420px]:grid-cols-1">
         <div>
-          <div className="text-base font-semibold">Tagada</div>
+          <div className="text-base font-semibold">Settle Swiftly</div>
           <p className="mt-2 max-w-[260px] text-sm text-ink-faint">
             Invoicing that chases unpaid revenue for you.
           </p>
@@ -54,7 +55,9 @@ export function Footer() {
         ))}
       </div>
 
-      <div className="mx-auto mt-10 max-w-[1280px] text-[13px] text-ink-ghost">© 2026 Tagada</div>
+      <div className="mx-auto mt-10 max-w-[1280px] text-[13px] text-ink-ghost">
+        © 2026 Settle Swiftly
+      </div>
     </footer>
   );
 }

@@ -6,8 +6,8 @@
  * security policy in the database.
  *
  * Read lazily rather than at module load: an eager throw would take down the
- * whole SSR render, including the marketing page, over a secret only the
- * waitlist path actually needs. The failure still surfaces immediately, at the
+ * whole SSR render, including the marketing page, over a secret that only
+ * server-side system jobs need. The failure still surfaces immediately, at the
  * first call that depends on it, with a message that names the variable.
  */
 
@@ -31,7 +31,7 @@ function requireServerEnv(name: string): string {
   return value;
 }
 
-/** Bypasses all RLS. Only for paths with no signed-in user, e.g. the waitlist. */
+/** Bypasses all RLS. Only for paths with no signed-in user, e.g. system jobs. */
 export function getServiceRoleKey(): string {
   return requireServerEnv("SUPABASE_SERVICE_ROLE_KEY");
 }

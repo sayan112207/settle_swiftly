@@ -7,8 +7,8 @@ import type { Database } from "./types.gen";
 /**
  * Service-role Supabase client. **Bypasses every row-level security policy.**
  *
- * Legitimate uses are narrow: work with no signed-in user to attribute it to
- * (the public waitlist insert) and genuine system jobs. Never use it to satisfy
+ * Legitimate uses are narrow: genuine system jobs with no signed-in user to
+ * attribute the work to. Never use it to satisfy
  * a user-facing read — that discards the tenancy guarantees the schema is built
  * on and moves them into application code, where they get forgotten.
  *
