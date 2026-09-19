@@ -67,9 +67,12 @@ const LANGUAGE_OPTIONS: { value: ContactLanguage; label: string }[] = [
 
 type AccountContactsPanelProps = {
   accountId: string;
+  /** Archived accounts: every control is disabled until the account is restored. */
+  readOnly?: boolean;
 };
 
-export function AccountContactsPanel({ accountId }: AccountContactsPanelProps) {
+/** The Contacts tab: the P0/P1/P2 ladder and escalation timing. `readOnly` disables every control. */
+export function AccountContactsPanel({ accountId, readOnly = false }: AccountContactsPanelProps) {
   const contactsQuery = useQuery({
     queryKey: accountsQueryKeys.contacts(accountId),
     queryFn: () => getAccountContacts(accountId),
@@ -141,28 +144,35 @@ export function AccountContactsPanel({ accountId }: AccountContactsPanelProps) {
   const mutating = updateContact.isPending || deleteContact.isPending || updateEscalation.isPending;
 
   return (
-    <ContactsLadder
-      data={data}
-      busy={mutating}
-      onUpdate={(contactId, body) => {
-        runExclusive((release) =>
-          updateContact.mutate(
-            { contactId, body, ifMatch: data.updated_at },
-            { onSettled: release },
-          ),
-        );
-      }}
-      onDelete={(contactId) => {
-        runExclusive((release) =>
-          deleteContact.mutate({ contactId, ifMatch: data.updated_at }, { onSettled: release }),
-        );
-      }}
-      onSaveEscalation={(body) => {
-        runExclusive((release) =>
-          updateEscalation.mutate({ body, ifMatch: data.updated_at }, { onSettled: release }),
-        );
-      }}
-    />
+    <div className="flex flex-col gap-4">
+      {readOnly ? (
+        <p className="text-prose font-normal text-fg-muted">
+          Contacts are read-only while this account is archived.
+        </p>
+      ) : null}
+      <ContactsLadder
+        data={data}
+        busy={mutating || readOnly}
+        onUpdate={(contactId, body) => {
+          runExclusive((release) =>
+            updateContact.mutate(
+              { contactId, body, ifMatch: data.updated_at },
+              { onSettled: release },
+            ),
+          );
+        }}
+        onDelete={(contactId) => {
+          runExclusive((release) =>
+            deleteContact.mutate({ contactId, ifMatch: data.updated_at }, { onSettled: release }),
+          );
+        }}
+        onSaveEscalation={(body) => {
+          runExclusive((release) =>
+            updateEscalation.mutate({ body, ifMatch: data.updated_at }, { onSettled: release }),
+          );
+        }}
+      />
+    </div>
   );
 }
 

@@ -157,12 +157,19 @@ export const accountsSortColumnSchema = z.enum([
 export const accountsSortDirSchema = z.enum(["asc", "desc"]);
 
 /**
+ * Which accounts the list shows. Archived accounts are out of totals and
+ * chasing, but stay readable and restorable under their own tab.
+ */
+export const accountsViewSchema = z.enum(["active", "archived"]);
+
+/**
  * URL search for `/app/accounts`.
  *
  * `.default` fills missing keys; `.catch` recovers from malformed values so a
  * bad link falls back instead of crashing the route.
  */
 export const accountsSearchSchema = z.object({
+  view: accountsViewSchema.default("active").catch("active"),
   filter: z
     .union([accountsListFilterSchema, z.array(accountsListFilterSchema)])
     .optional()
@@ -578,6 +585,7 @@ export type ActivityTone = z.infer<typeof activityToneSchema>;
 export type AccountsListFilter = z.infer<typeof accountsListFilterSchema>;
 export type AccountsSortColumn = z.infer<typeof accountsSortColumnSchema>;
 export type AccountsSortDir = z.infer<typeof accountsSortDirSchema>;
+export type AccountsView = z.infer<typeof accountsViewSchema>;
 export type AccountsSearch = z.infer<typeof accountsSearchSchema>;
 export type AccountDetailTab = z.infer<typeof accountDetailTabSchema>;
 export type AccountDetailSearch = z.infer<typeof accountDetailSearchSchema>;

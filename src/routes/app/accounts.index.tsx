@@ -16,13 +16,15 @@ import {
   type AccountsSearch,
   type AccountsSortColumn,
   type AccountsSortDir,
+  type AccountsView,
 } from "@/lib/schemas/accounts";
 import { AccountsApiError, accountsQueryKeys, getAccounts } from "@/lib/services/accounts";
 
 /**
  * Accounts list URL state.
  *
- * Example: `/app/accounts?filter=has_overdue&sort=outstanding&dir=desc`
+ * Example: `/app/accounts?filter=has_overdue&sort=outstanding&dir=desc`,
+ * or `/app/accounts?view=archived` for the Archived tab.
  */
 export const Route = createFileRoute("/app/accounts/")({
   validateSearch: accountsSearchSchema,
@@ -41,14 +43,18 @@ function normalizeFilters(filter: AccountsSearch["filter"]): AccountsListFilter[
   return Array.isArray(filter) ? filter : [filter];
 }
 
+/** The accounts list, with the Active / Archived switch, filters and sortable columns. */
 function AccountsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const filters = normalizeFilters(search.filter);
+  const archivedView = search.view === "archived";
+  // Filters are about chasing, which archived accounts are out of.
+  const filters = archivedView ? [] : normalizeFilters(search.filter);
 
   const listParams = {
     sort: search.sort,
     dir: search.dir,
+    ...(archivedView ? { view: "archived" as const } : {}),
     ...(filters.length > 0 ? { filter: filters } : {}),
   };
 
@@ -59,6 +65,7 @@ function AccountsPage() {
   });
 
   function setSearch(patch: {
+    view?: AccountsView;
     filter?: AccountsListFilter[];
     sort?: AccountsSortColumn;
     dir?: AccountsSortDir;
@@ -67,9 +74,12 @@ function AccountsPage() {
     void navigate({
       search: (prev: AccountsSearch): AccountsSearch => {
         const next: AccountsSearch = {
+          view: patch.view ?? prev.view,
           sort: patch.sort ?? prev.sort,
           dir: patch.dir ?? prev.dir,
         };
+        // Switching views starts from an unfiltered list.
+        if (patch.view !== undefined && patch.view !== prev.view) return next;
         if (patch.clearFilter) return next;
         if (patch.filter !== undefined) {
           if (patch.filter.length === 0) return next;
@@ -188,7 +198,14 @@ function AccountsPage() {
       header: "Status",
       ariaSort: ariaSortFor("chase_status"),
       onHeaderClick: () => onSort("chase_status"),
-      cell: (row) => <AccountStatusBadge label={row.status_label} />,
+      cell: (row) =>
+        archivedView ? (
+          <span className="inline-flex items-center rounded-pill bg-alt px-2.5 py-0.5 text-pill font-semibold text-fg-soft">
+            Archived
+          </span>
+        ) : (
+          <AccountStatusBadge label={row.status_label} />
+        ),
     },
   ];
 
@@ -210,17 +227,27 @@ function AccountsPage() {
       </div>
 
       <div className="space-y-4">
-        <FilterBar
-          filters={filters}
-          filteredCount={listQuery.data?.filtered_count}
-          filteredOutstanding={listQuery.data?.filtered_outstanding}
-          onToggle={toggleFilter}
-          onClear={clearFilters}
-          onSelectAll={clearFilters}
-        />
+        <ViewSwitch view={search.view} onChange={(view) => setSearch({ view })} />
+
+        {archivedView ? (
+          <ArchivedSummary
+            count={listQuery.data?.filtered_count}
+            outstanding={listQuery.data?.filtered_outstanding}
+          />
+        ) : (
+          <FilterBar
+            filters={filters}
+            filteredCount={listQuery.data?.filtered_count}
+            filteredOutstanding={listQuery.data?.filtered_outstanding}
+            onToggle={toggleFilter}
+            onClear={clearFilters}
+            onSelectAll={clearFilters}
+          />
+        )}
 
         <AccountsBody
           query={listQuery}
+          archivedView={archivedView}
           filters={filters}
           columns={columns}
           onClearFilters={clearFilters}
@@ -256,6 +283,65 @@ function MetricStrip({
     <p className="mt-2 text-prose font-normal text-fg">
       {totals.account_count} accounts · {formatINR(totals.outstanding)} outstanding ·{" "}
       <span className="text-danger">{formatINR(totals.overdue)} overdue</span>
+    </p>
+  );
+}
+
+const VIEWS: { id: AccountsView; label: string }[] = [
+  { id: "active", label: "Active" },
+  { id: "archived", label: "Archived" },
+];
+
+/**
+ * Active / Archived switch. Each option changes the URL, so these are links in
+ * a nav with `aria-current`, not ARIA tabs with panels.
+ */
+function ViewSwitch({
+  view,
+  onChange,
+}: {
+  view: AccountsView;
+  onChange: (view: AccountsView) => void;
+}) {
+  return (
+    <nav aria-label="Account views" className="flex gap-6 border-b border-hairline">
+      {VIEWS.map((item) => {
+        const current = item.id === view;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            aria-current={current ? "page" : undefined}
+            onClick={() => onChange(item.id)}
+            className={
+              current
+                ? "border-b-2 border-accent-line pb-3 text-body font-semibold text-fg"
+                : "border-b-2 border-transparent pb-3 text-body font-semibold text-fg-soft hover:text-fg"
+            }
+          >
+            {item.label}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** The archived view's one-line summary, in place of the filter bar. */
+function ArchivedSummary({
+  count,
+  outstanding,
+}: {
+  count: number | undefined;
+  outstanding: string | undefined;
+}) {
+  if (count === undefined || outstanding === undefined) {
+    return <AppSkeleton className="h-4 w-60" />;
+  }
+  return (
+    <p className="text-prose font-normal text-fg-muted tnum">
+      {count} archived {count === 1 ? "account" : "accounts"} · {formatINR(outstanding)} not counted
+      in your totals
     </p>
   );
 }
@@ -351,8 +437,10 @@ function pillClass(pressed: boolean): string {
   ].join(" ");
 }
 
+/** The list body: loading, error, the right empty state for the view, or the table. */
 function AccountsBody({
   query,
+  archivedView,
   filters,
   columns,
   onClearFilters,
@@ -360,6 +448,7 @@ function AccountsBody({
   onAddEntries,
 }: {
   query: ReturnType<typeof useQuery<Awaited<ReturnType<typeof getAccounts>>>>;
+  archivedView: boolean;
   filters: AccountsListFilter[];
   columns: Column<AccountListItem>[];
   onClearFilters: () => void;
@@ -387,6 +476,19 @@ function AccountsBody({
 
   const data = query.data;
   if (!data) return null;
+
+  // Empty — nothing archived.
+  if (archivedView && data.total_count === 0) {
+    return (
+      <div className="flex max-w-md flex-col items-start gap-2 py-10">
+        <h2 className="text-section font-bold text-fg">No archived accounts.</h2>
+        <p className="text-body font-semibold text-fg-muted">
+          Archive an account from its Settings tab to move it here. It stays out of your totals and
+          nobody is chased, and you can restore it at any time.
+        </p>
+      </div>
+    );
+  }
 
   // Empty — first run (org has no accounts at all).
   if (data.total_count === 0) {

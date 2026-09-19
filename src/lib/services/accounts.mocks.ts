@@ -9,6 +9,7 @@ import type {
   AccountListItem,
   AccountPayments,
   AccountsList,
+  AccountsView,
   ApiError,
   ArchiveAccountBody,
   CadenceChannel,
@@ -954,6 +955,8 @@ export const longAccountNameListFixture: AccountsList = {
 
 type MockStore = {
   list: AccountsList;
+  /** Rows under Accounts → Archived. Moved here by archive, back by restore. */
+  archived: AccountListItem[];
   details: Record<string, AccountDetail>;
   invoices: Record<string, AccountInvoices>;
   contacts: Record<string, AccountContacts>;
@@ -961,9 +964,11 @@ type MockStore = {
   activity: Record<string, AccountActivity>;
 };
 
+/** A fresh copy of every fixture, so each reset starts from the same state. */
 function seedStore(): MockStore {
   return {
     list: structuredClone(accountsListFixture),
+    archived: [],
     details: {
       [ACCOUNT_IDS.sharma]: structuredClone(sharmaDetailFixture),
       [ACCOUNT_IDS.kaveri]: structuredClone(kaveriDetailFixture),
@@ -991,15 +996,24 @@ export function resetAccountsMocks(): void {
   mockStore = seedStore();
 }
 
-export function getMockAccountsList(): AccountsList {
-  return structuredClone(mockStore.list);
+/**
+ * The list for one view. `org_totals` stays the live book in both views —
+ * archived accounts are out of every total.
+ */
+export function getMockAccountsList(view: AccountsView = "active"): AccountsList {
+  if (view === "active") return structuredClone(mockStore.list);
+  const items = structuredClone(mockStore.archived);
+  return { ...structuredClone(mockStore.list), total_count: items.length, items };
 }
 
+/** The stored detail, or one synthesized from a list row (active or archived). */
 export function getMockAccountDetail(accountId: string): AccountDetail | undefined {
   const detail = mockStore.details[accountId];
   if (detail) return structuredClone(detail);
 
-  const listItem = mockStore.list.items.find((item) => item.account_id === accountId);
+  const listItem = [...mockStore.list.items, ...mockStore.archived].find(
+    (item) => item.account_id === accountId,
+  );
   if (!listItem) return undefined;
   return synthesizeDetailFromListItem(listItem);
 }
@@ -1015,10 +1029,12 @@ export function getMockAccountInvoices(accountId: string): AccountInvoices | und
   return undefined;
 }
 
+/** True for any account the mock knows, including archived ones. */
 function accountExists(accountId: string): boolean {
   return (
     accountId in mockStore.details ||
-    mockStore.list.items.some((item) => item.account_id === accountId)
+    mockStore.list.items.some((item) => item.account_id === accountId) ||
+    mockStore.archived.some((item) => item.account_id === accountId)
   );
 }
 
@@ -1408,6 +1424,7 @@ export function mockUpdateChasingSettings(
   return structuredClone(detail);
 }
 
+/** Mock archive: moves the row to the Archived view and keeps the detail readable. */
 export function mockArchiveAccount(
   accountId: string,
   body: ArchiveAccountBody,
@@ -1427,12 +1444,57 @@ export function mockArchiveAccount(
     throw new MockAccountsConflictError("archive_name_mismatch", "That name doesn't match.");
   }
 
-  const snapshot = structuredClone(detail);
+  if (detail.settings.archived_at !== null) {
+    throw new MockAccountsConflictError(
+      "account_archived",
+      "This account is archived. Restore it to make changes.",
+    );
+  }
+
+  const row = mockStore.list.items.find((item) => item.account_id === accountId);
+  if (row) mockStore.archived.push(row);
   mockStore.list.items = mockStore.list.items.filter((item) => item.account_id !== accountId);
   mockStore.list.total_count = Math.max(0, mockStore.list.total_count - 1);
   mockStore.list.filtered_count = mockStore.list.items.length;
-  delete mockStore.details[accountId];
-  return snapshot;
+
+  const now = bumpUpdatedAt();
+  detail.settings.archived_at = now;
+  detail.header_status = "Archived";
+  detail.recommendation = null;
+  detail.updated_at = now;
+  appendActivity(accountId, "settings_changed", "Account archived");
+  return structuredClone(detail);
+}
+
+/** Mock restore: moves the row back to the active list and clears `archived_at`. */
+export function mockRestoreAccount(accountId: string, ifMatch: string): AccountDetail {
+  const detail = mockStore.details[accountId];
+  if (!detail) {
+    throw new MockAccountsConflictError("not_found", "Account not found.");
+  }
+  if (detail.updated_at !== ifMatch) {
+    throw new MockAccountsConflictError(
+      "stale_write",
+      "Someone else changed this account. Reload and try again.",
+    );
+  }
+  if (detail.settings.archived_at === null) {
+    throw new MockAccountsConflictError("not_archived", "This account isn't archived.");
+  }
+
+  const row = mockStore.archived.find((item) => item.account_id === accountId);
+  if (row) mockStore.list.items.push(row);
+  mockStore.archived = mockStore.archived.filter((item) => item.account_id !== accountId);
+  // Mirrors the archive's decrement: the fixture's total covers more accounts
+  // than its sample rows, so recounting the rows would shrink it.
+  mockStore.list.total_count += 1;
+  mockStore.list.filtered_count = mockStore.list.items.length;
+
+  detail.settings.archived_at = null;
+  detail.header_status = row ? headerStatusFor(row) : "Active";
+  detail.updated_at = bumpUpdatedAt();
+  appendActivity(accountId, "settings_changed", "Account restored");
+  return structuredClone(detail);
 }
 
 export function mockPauseAccount(

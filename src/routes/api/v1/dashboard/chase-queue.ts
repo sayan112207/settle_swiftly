@@ -1,12 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import {
-  ApiError,
-  buildChaseQueue,
-  chaseQueueLimitSchema,
-  handleApi,
-  json,
-} from "@/lib/services/dashboard-api.server";
+import { ApiError, handleApi, json } from "@/lib/services/api.server";
+import { buildChaseQueue, chaseQueueLimitSchema } from "@/lib/services/dashboard-api.server";
 
 /** `GET /api/v1/dashboard/chase-queue?limit=6` — ranked chaseable invoices. See docs/api-contract.md §3. */
 export const Route = createFileRoute("/api/v1/dashboard/chase-queue")({

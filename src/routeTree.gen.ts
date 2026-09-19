@@ -27,8 +27,21 @@ import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 import { Route as ApiV1ChasesRouteImport } from './routes/api/v1/chases'
 import { Route as AppAccountsIndexRouteImport } from './routes/app/accounts.index'
 import { Route as AppAccountsAccountIdRouteImport } from './routes/app/accounts.$accountId'
+import { Route as ApiV1AccountsIndexRouteImport } from './routes/api/v1/accounts/index'
 import { Route as ApiV1DashboardChaseQueueRouteImport } from './routes/api/v1/dashboard/chase-queue'
 import { Route as ApiV1DashboardSummaryRouteImport } from './routes/api/v1/dashboard/summary'
+import { Route as ApiV1AccountsAccountIdIndexRouteImport } from './routes/api/v1/accounts/$accountId/index'
+import { Route as ApiV1AccountsAccountIdActivityRouteImport } from './routes/api/v1/accounts/$accountId/activity'
+import { Route as ApiV1AccountsAccountIdArchiveRouteImport } from './routes/api/v1/accounts/$accountId/archive'
+import { Route as ApiV1AccountsAccountIdChasingSettingsRouteImport } from './routes/api/v1/accounts/$accountId/chasing-settings'
+import { Route as ApiV1AccountsAccountIdEscalationRouteImport } from './routes/api/v1/accounts/$accountId/escalation'
+import { Route as ApiV1AccountsAccountIdInvoicesRouteImport } from './routes/api/v1/accounts/$accountId/invoices'
+import { Route as ApiV1AccountsAccountIdPauseRouteImport } from './routes/api/v1/accounts/$accountId/pause'
+import { Route as ApiV1AccountsAccountIdPaymentsRouteImport } from './routes/api/v1/accounts/$accountId/payments'
+import { Route as ApiV1AccountsAccountIdRestoreRouteImport } from './routes/api/v1/accounts/$accountId/restore'
+import { Route as ApiV1AccountsAccountIdResumeRouteImport } from './routes/api/v1/accounts/$accountId/resume'
+import { Route as ApiV1AccountsAccountIdContactsIndexRouteImport } from './routes/api/v1/accounts/$accountId/contacts/index'
+import { Route as ApiV1AccountsAccountIdContactsContactIdRouteImport } from './routes/api/v1/accounts/$accountId/contacts/$contactId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -120,6 +133,11 @@ const AppAccountsAccountIdRoute = AppAccountsAccountIdRouteImport.update({
   path: '/$accountId',
   getParentRoute: () => AppAccountsRoute,
 } as any)
+const ApiV1AccountsIndexRoute = ApiV1AccountsIndexRouteImport.update({
+  id: '/api/v1/accounts/',
+  path: '/api/v1/accounts/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1DashboardChaseQueueRoute =
   ApiV1DashboardChaseQueueRouteImport.update({
     id: '/api/v1/dashboard/chase-queue',
@@ -131,6 +149,78 @@ const ApiV1DashboardSummaryRoute = ApiV1DashboardSummaryRouteImport.update({
   path: '/api/v1/dashboard/summary',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1AccountsAccountIdIndexRoute =
+  ApiV1AccountsAccountIdIndexRouteImport.update({
+    id: '/api/v1/accounts/$accountId/',
+    path: '/api/v1/accounts/$accountId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1AccountsAccountIdActivityRoute =
+  ApiV1AccountsAccountIdActivityRouteImport.update({
+    id: '/api/v1/accounts/$accountId/activity',
+    path: '/api/v1/accounts/$accountId/activity',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1AccountsAccountIdArchiveRoute =
+  ApiV1AccountsAccountIdArchiveRouteImport.update({
+    id: '/api/v1/accounts/$accountId/archive',
+    path: '/api/v1/accounts/$accountId/archive',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1AccountsAccountIdChasingSettingsRoute =
+  ApiV1AccountsAccountIdChasingSettingsRouteImport.update({
+    id: '/api/v1/accounts/$accountId/chasing-settings',
+    path: '/api/v1/accounts/$accountId/chasing-settings',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1AccountsAccountIdEscalationRoute =
+  ApiV1AccountsAccountIdEscalationRouteImport.update({
+    id: '/api/v1/accounts/$accountId/escalation',
+    path: '/api/v1/accounts/$accountId/escalation',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1AccountsAccountIdInvoicesRoute =
+  ApiV1AccountsAccountIdInvoicesRouteImport.update({
+    id: '/api/v1/accounts/$accountId/invoices',
+    path: '/api/v1/accounts/$accountId/invoices',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1AccountsAccountIdPauseRoute =
+  ApiV1AccountsAccountIdPauseRouteImport.update({
+    id: '/api/v1/accounts/$accountId/pause',
+    path: '/api/v1/accounts/$accountId/pause',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1AccountsAccountIdPaymentsRoute =
+  ApiV1AccountsAccountIdPaymentsRouteImport.update({
+    id: '/api/v1/accounts/$accountId/payments',
+    path: '/api/v1/accounts/$accountId/payments',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1AccountsAccountIdRestoreRoute =
+  ApiV1AccountsAccountIdRestoreRouteImport.update({
+    id: '/api/v1/accounts/$accountId/restore',
+    path: '/api/v1/accounts/$accountId/restore',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1AccountsAccountIdResumeRoute =
+  ApiV1AccountsAccountIdResumeRouteImport.update({
+    id: '/api/v1/accounts/$accountId/resume',
+    path: '/api/v1/accounts/$accountId/resume',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1AccountsAccountIdContactsIndexRoute =
+  ApiV1AccountsAccountIdContactsIndexRouteImport.update({
+    id: '/api/v1/accounts/$accountId/contacts/',
+    path: '/api/v1/accounts/$accountId/contacts/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1AccountsAccountIdContactsContactIdRoute =
+  ApiV1AccountsAccountIdContactsContactIdRouteImport.update({
+    id: '/api/v1/accounts/$accountId/contacts/$contactId',
+    path: '/api/v1/accounts/$accountId/contacts/$contactId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -153,6 +243,19 @@ export interface FileRoutesByFullPath {
   '/app/accounts/': typeof AppAccountsIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
+  '/api/v1/accounts/': typeof ApiV1AccountsIndexRoute
+  '/api/v1/accounts/$accountId/activity': typeof ApiV1AccountsAccountIdActivityRoute
+  '/api/v1/accounts/$accountId/archive': typeof ApiV1AccountsAccountIdArchiveRoute
+  '/api/v1/accounts/$accountId/chasing-settings': typeof ApiV1AccountsAccountIdChasingSettingsRoute
+  '/api/v1/accounts/$accountId/escalation': typeof ApiV1AccountsAccountIdEscalationRoute
+  '/api/v1/accounts/$accountId/invoices': typeof ApiV1AccountsAccountIdInvoicesRoute
+  '/api/v1/accounts/$accountId/pause': typeof ApiV1AccountsAccountIdPauseRoute
+  '/api/v1/accounts/$accountId/payments': typeof ApiV1AccountsAccountIdPaymentsRoute
+  '/api/v1/accounts/$accountId/restore': typeof ApiV1AccountsAccountIdRestoreRoute
+  '/api/v1/accounts/$accountId/resume': typeof ApiV1AccountsAccountIdResumeRoute
+  '/api/v1/accounts/$accountId/': typeof ApiV1AccountsAccountIdIndexRoute
+  '/api/v1/accounts/$accountId/contacts/$contactId': typeof ApiV1AccountsAccountIdContactsContactIdRoute
+  '/api/v1/accounts/$accountId/contacts/': typeof ApiV1AccountsAccountIdContactsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -173,6 +276,19 @@ export interface FileRoutesByTo {
   '/app/accounts': typeof AppAccountsIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
+  '/api/v1/accounts': typeof ApiV1AccountsIndexRoute
+  '/api/v1/accounts/$accountId/activity': typeof ApiV1AccountsAccountIdActivityRoute
+  '/api/v1/accounts/$accountId/archive': typeof ApiV1AccountsAccountIdArchiveRoute
+  '/api/v1/accounts/$accountId/chasing-settings': typeof ApiV1AccountsAccountIdChasingSettingsRoute
+  '/api/v1/accounts/$accountId/escalation': typeof ApiV1AccountsAccountIdEscalationRoute
+  '/api/v1/accounts/$accountId/invoices': typeof ApiV1AccountsAccountIdInvoicesRoute
+  '/api/v1/accounts/$accountId/pause': typeof ApiV1AccountsAccountIdPauseRoute
+  '/api/v1/accounts/$accountId/payments': typeof ApiV1AccountsAccountIdPaymentsRoute
+  '/api/v1/accounts/$accountId/restore': typeof ApiV1AccountsAccountIdRestoreRoute
+  '/api/v1/accounts/$accountId/resume': typeof ApiV1AccountsAccountIdResumeRoute
+  '/api/v1/accounts/$accountId': typeof ApiV1AccountsAccountIdIndexRoute
+  '/api/v1/accounts/$accountId/contacts/$contactId': typeof ApiV1AccountsAccountIdContactsContactIdRoute
+  '/api/v1/accounts/$accountId/contacts': typeof ApiV1AccountsAccountIdContactsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -196,6 +312,19 @@ export interface FileRoutesById {
   '/app/accounts/': typeof AppAccountsIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
+  '/api/v1/accounts/': typeof ApiV1AccountsIndexRoute
+  '/api/v1/accounts/$accountId/activity': typeof ApiV1AccountsAccountIdActivityRoute
+  '/api/v1/accounts/$accountId/archive': typeof ApiV1AccountsAccountIdArchiveRoute
+  '/api/v1/accounts/$accountId/chasing-settings': typeof ApiV1AccountsAccountIdChasingSettingsRoute
+  '/api/v1/accounts/$accountId/escalation': typeof ApiV1AccountsAccountIdEscalationRoute
+  '/api/v1/accounts/$accountId/invoices': typeof ApiV1AccountsAccountIdInvoicesRoute
+  '/api/v1/accounts/$accountId/pause': typeof ApiV1AccountsAccountIdPauseRoute
+  '/api/v1/accounts/$accountId/payments': typeof ApiV1AccountsAccountIdPaymentsRoute
+  '/api/v1/accounts/$accountId/restore': typeof ApiV1AccountsAccountIdRestoreRoute
+  '/api/v1/accounts/$accountId/resume': typeof ApiV1AccountsAccountIdResumeRoute
+  '/api/v1/accounts/$accountId/': typeof ApiV1AccountsAccountIdIndexRoute
+  '/api/v1/accounts/$accountId/contacts/$contactId': typeof ApiV1AccountsAccountIdContactsContactIdRoute
+  '/api/v1/accounts/$accountId/contacts/': typeof ApiV1AccountsAccountIdContactsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -220,6 +349,19 @@ export interface FileRouteTypes {
     | '/app/accounts/'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
+    | '/api/v1/accounts/'
+    | '/api/v1/accounts/$accountId/activity'
+    | '/api/v1/accounts/$accountId/archive'
+    | '/api/v1/accounts/$accountId/chasing-settings'
+    | '/api/v1/accounts/$accountId/escalation'
+    | '/api/v1/accounts/$accountId/invoices'
+    | '/api/v1/accounts/$accountId/pause'
+    | '/api/v1/accounts/$accountId/payments'
+    | '/api/v1/accounts/$accountId/restore'
+    | '/api/v1/accounts/$accountId/resume'
+    | '/api/v1/accounts/$accountId/'
+    | '/api/v1/accounts/$accountId/contacts/$contactId'
+    | '/api/v1/accounts/$accountId/contacts/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -240,6 +382,19 @@ export interface FileRouteTypes {
     | '/app/accounts'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
+    | '/api/v1/accounts'
+    | '/api/v1/accounts/$accountId/activity'
+    | '/api/v1/accounts/$accountId/archive'
+    | '/api/v1/accounts/$accountId/chasing-settings'
+    | '/api/v1/accounts/$accountId/escalation'
+    | '/api/v1/accounts/$accountId/invoices'
+    | '/api/v1/accounts/$accountId/pause'
+    | '/api/v1/accounts/$accountId/payments'
+    | '/api/v1/accounts/$accountId/restore'
+    | '/api/v1/accounts/$accountId/resume'
+    | '/api/v1/accounts/$accountId'
+    | '/api/v1/accounts/$accountId/contacts/$contactId'
+    | '/api/v1/accounts/$accountId/contacts'
   id:
     | '__root__'
     | '/'
@@ -262,6 +417,19 @@ export interface FileRouteTypes {
     | '/app/accounts/'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
+    | '/api/v1/accounts/'
+    | '/api/v1/accounts/$accountId/activity'
+    | '/api/v1/accounts/$accountId/archive'
+    | '/api/v1/accounts/$accountId/chasing-settings'
+    | '/api/v1/accounts/$accountId/escalation'
+    | '/api/v1/accounts/$accountId/invoices'
+    | '/api/v1/accounts/$accountId/pause'
+    | '/api/v1/accounts/$accountId/payments'
+    | '/api/v1/accounts/$accountId/restore'
+    | '/api/v1/accounts/$accountId/resume'
+    | '/api/v1/accounts/$accountId/'
+    | '/api/v1/accounts/$accountId/contacts/$contactId'
+    | '/api/v1/accounts/$accountId/contacts/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -274,6 +442,19 @@ export interface RootRouteChildren {
   ApiV1ChasesRoute: typeof ApiV1ChasesRoute
   ApiV1DashboardChaseQueueRoute: typeof ApiV1DashboardChaseQueueRoute
   ApiV1DashboardSummaryRoute: typeof ApiV1DashboardSummaryRoute
+  ApiV1AccountsIndexRoute: typeof ApiV1AccountsIndexRoute
+  ApiV1AccountsAccountIdActivityRoute: typeof ApiV1AccountsAccountIdActivityRoute
+  ApiV1AccountsAccountIdArchiveRoute: typeof ApiV1AccountsAccountIdArchiveRoute
+  ApiV1AccountsAccountIdChasingSettingsRoute: typeof ApiV1AccountsAccountIdChasingSettingsRoute
+  ApiV1AccountsAccountIdEscalationRoute: typeof ApiV1AccountsAccountIdEscalationRoute
+  ApiV1AccountsAccountIdInvoicesRoute: typeof ApiV1AccountsAccountIdInvoicesRoute
+  ApiV1AccountsAccountIdPauseRoute: typeof ApiV1AccountsAccountIdPauseRoute
+  ApiV1AccountsAccountIdPaymentsRoute: typeof ApiV1AccountsAccountIdPaymentsRoute
+  ApiV1AccountsAccountIdRestoreRoute: typeof ApiV1AccountsAccountIdRestoreRoute
+  ApiV1AccountsAccountIdResumeRoute: typeof ApiV1AccountsAccountIdResumeRoute
+  ApiV1AccountsAccountIdIndexRoute: typeof ApiV1AccountsAccountIdIndexRoute
+  ApiV1AccountsAccountIdContactsContactIdRoute: typeof ApiV1AccountsAccountIdContactsContactIdRoute
+  ApiV1AccountsAccountIdContactsIndexRoute: typeof ApiV1AccountsAccountIdContactsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -404,6 +585,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountsAccountIdRouteImport
       parentRoute: typeof AppAccountsRoute
     }
+    '/api/v1/accounts/': {
+      id: '/api/v1/accounts/'
+      path: '/api/v1/accounts'
+      fullPath: '/api/v1/accounts/'
+      preLoaderRoute: typeof ApiV1AccountsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/dashboard/chase-queue': {
       id: '/api/v1/dashboard/chase-queue'
       path: '/api/v1/dashboard/chase-queue'
@@ -416,6 +604,90 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/dashboard/summary'
       fullPath: '/api/v1/dashboard/summary'
       preLoaderRoute: typeof ApiV1DashboardSummaryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/': {
+      id: '/api/v1/accounts/$accountId/'
+      path: '/api/v1/accounts/$accountId'
+      fullPath: '/api/v1/accounts/$accountId/'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/activity': {
+      id: '/api/v1/accounts/$accountId/activity'
+      path: '/api/v1/accounts/$accountId/activity'
+      fullPath: '/api/v1/accounts/$accountId/activity'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdActivityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/archive': {
+      id: '/api/v1/accounts/$accountId/archive'
+      path: '/api/v1/accounts/$accountId/archive'
+      fullPath: '/api/v1/accounts/$accountId/archive'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdArchiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/chasing-settings': {
+      id: '/api/v1/accounts/$accountId/chasing-settings'
+      path: '/api/v1/accounts/$accountId/chasing-settings'
+      fullPath: '/api/v1/accounts/$accountId/chasing-settings'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdChasingSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/escalation': {
+      id: '/api/v1/accounts/$accountId/escalation'
+      path: '/api/v1/accounts/$accountId/escalation'
+      fullPath: '/api/v1/accounts/$accountId/escalation'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdEscalationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/invoices': {
+      id: '/api/v1/accounts/$accountId/invoices'
+      path: '/api/v1/accounts/$accountId/invoices'
+      fullPath: '/api/v1/accounts/$accountId/invoices'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdInvoicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/pause': {
+      id: '/api/v1/accounts/$accountId/pause'
+      path: '/api/v1/accounts/$accountId/pause'
+      fullPath: '/api/v1/accounts/$accountId/pause'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdPauseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/payments': {
+      id: '/api/v1/accounts/$accountId/payments'
+      path: '/api/v1/accounts/$accountId/payments'
+      fullPath: '/api/v1/accounts/$accountId/payments'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdPaymentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/restore': {
+      id: '/api/v1/accounts/$accountId/restore'
+      path: '/api/v1/accounts/$accountId/restore'
+      fullPath: '/api/v1/accounts/$accountId/restore'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdRestoreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/resume': {
+      id: '/api/v1/accounts/$accountId/resume'
+      path: '/api/v1/accounts/$accountId/resume'
+      fullPath: '/api/v1/accounts/$accountId/resume'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdResumeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/contacts/': {
+      id: '/api/v1/accounts/$accountId/contacts/'
+      path: '/api/v1/accounts/$accountId/contacts'
+      fullPath: '/api/v1/accounts/$accountId/contacts/'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdContactsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/accounts/$accountId/contacts/$contactId': {
+      id: '/api/v1/accounts/$accountId/contacts/$contactId'
+      path: '/api/v1/accounts/$accountId/contacts/$contactId'
+      fullPath: '/api/v1/accounts/$accountId/contacts/$contactId'
+      preLoaderRoute: typeof ApiV1AccountsAccountIdContactsContactIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -471,6 +743,22 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1ChasesRoute: ApiV1ChasesRoute,
   ApiV1DashboardChaseQueueRoute: ApiV1DashboardChaseQueueRoute,
   ApiV1DashboardSummaryRoute: ApiV1DashboardSummaryRoute,
+  ApiV1AccountsIndexRoute: ApiV1AccountsIndexRoute,
+  ApiV1AccountsAccountIdActivityRoute: ApiV1AccountsAccountIdActivityRoute,
+  ApiV1AccountsAccountIdArchiveRoute: ApiV1AccountsAccountIdArchiveRoute,
+  ApiV1AccountsAccountIdChasingSettingsRoute:
+    ApiV1AccountsAccountIdChasingSettingsRoute,
+  ApiV1AccountsAccountIdEscalationRoute: ApiV1AccountsAccountIdEscalationRoute,
+  ApiV1AccountsAccountIdInvoicesRoute: ApiV1AccountsAccountIdInvoicesRoute,
+  ApiV1AccountsAccountIdPauseRoute: ApiV1AccountsAccountIdPauseRoute,
+  ApiV1AccountsAccountIdPaymentsRoute: ApiV1AccountsAccountIdPaymentsRoute,
+  ApiV1AccountsAccountIdRestoreRoute: ApiV1AccountsAccountIdRestoreRoute,
+  ApiV1AccountsAccountIdResumeRoute: ApiV1AccountsAccountIdResumeRoute,
+  ApiV1AccountsAccountIdIndexRoute: ApiV1AccountsAccountIdIndexRoute,
+  ApiV1AccountsAccountIdContactsContactIdRoute:
+    ApiV1AccountsAccountIdContactsContactIdRoute,
+  ApiV1AccountsAccountIdContactsIndexRoute:
+    ApiV1AccountsAccountIdContactsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

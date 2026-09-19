@@ -14,49 +14,225 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_cadence_steps: {
+        Row: {
+          account_id: string
+          channel: string
+          org_id: string
+          recipients: string
+          step_key: string
+          tone: string
+        }
+        Insert: {
+          account_id: string
+          channel: string
+          org_id: string
+          recipients: string
+          step_key: string
+          tone: string
+        }
+        Update: {
+          account_id?: string
+          channel?: string
+          org_id?: string
+          recipients?: string
+          step_key?: string
+          tone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_cadence_steps_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "account_cadence_steps_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "v_account_balances"
+            referencedColumns: ["account_id", "org_id"]
+          },
+          {
+            foreignKeyName: "account_cadence_steps_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accounts: {
         Row: {
+          archived_at: string | null
+          chase_mode: string
           created_at: string
           default_currency: string
+          detail_version: string
           id: string
+          is_msme: boolean
+          ladder_version: string
+          last_synced_at: string | null
           name: string
           name_normalized: string | null
           notes: string | null
           org_id: string
+          owner_user_id: string | null
+          p1_after_days: number
+          p2_after_days: number
           pause_reason: string | null
           paused_at: string | null
           paused_until: string | null
+          send_window_closes: string | null
+          send_window_days: string[] | null
+          send_window_mode: string
+          send_window_opens: string | null
+          stop_note: string | null
+          stop_reason: string | null
+          tds_rate: number | null
+          tds_section: string
+          term_days: number
+          terms_preset: string
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
+          chase_mode?: string
           created_at?: string
           default_currency?: string
+          detail_version?: string
           id?: string
+          is_msme?: boolean
+          ladder_version?: string
+          last_synced_at?: string | null
           name: string
           name_normalized?: string | null
           notes?: string | null
           org_id: string
+          owner_user_id?: string | null
+          p1_after_days?: number
+          p2_after_days?: number
           pause_reason?: string | null
           paused_at?: string | null
           paused_until?: string | null
+          send_window_closes?: string | null
+          send_window_days?: string[] | null
+          send_window_mode?: string
+          send_window_opens?: string | null
+          stop_note?: string | null
+          stop_reason?: string | null
+          tds_rate?: number | null
+          tds_section?: string
+          term_days?: number
+          terms_preset?: string
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
+          chase_mode?: string
           created_at?: string
           default_currency?: string
+          detail_version?: string
           id?: string
+          is_msme?: boolean
+          ladder_version?: string
+          last_synced_at?: string | null
           name?: string
           name_normalized?: string | null
           notes?: string | null
           org_id?: string
+          owner_user_id?: string | null
+          p1_after_days?: number
+          p2_after_days?: number
           pause_reason?: string | null
           paused_at?: string | null
           paused_until?: string | null
+          send_window_closes?: string | null
+          send_window_days?: string[] | null
+          send_window_mode?: string
+          send_window_opens?: string | null
+          stop_note?: string | null
+          stop_reason?: string | null
+          tds_rate?: number | null
+          tds_section?: string
+          term_days?: number
+          terms_preset?: string
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "accounts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      activity_log: {
+        Row: {
+          account_id: string
+          actor_user_id: string | null
+          contact_id: string | null
+          detail: string
+          id: string
+          invoice_id: string | null
+          kind: string
+          link_href: string | null
+          link_label: string | null
+          occurred_at: string
+          org_id: string
+          title: string
+          tone: string
+        }
+        Insert: {
+          account_id: string
+          actor_user_id?: string | null
+          contact_id?: string | null
+          detail?: string
+          id?: string
+          invoice_id?: string | null
+          kind: string
+          link_href?: string | null
+          link_label?: string | null
+          occurred_at?: string
+          org_id: string
+          title: string
+          tone?: string
+        }
+        Update: {
+          account_id?: string
+          actor_user_id?: string | null
+          contact_id?: string | null
+          detail?: string
+          id?: string
+          invoice_id?: string | null
+          kind?: string
+          link_href?: string | null
+          link_label?: string | null
+          occurred_at?: string
+          org_id?: string
+          title?: string
+          tone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_log_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "activity_log_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "v_account_balances"
+            referencedColumns: ["account_id", "org_id"]
+          },
+          {
+            foreignKeyName: "activity_log_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "orgs"
@@ -689,11 +865,21 @@ export type Database = {
       contacts: {
         Row: {
           account_id: string
+          always_cc: boolean
+          channel_email: boolean
+          channel_sms: boolean
+          channel_whatsapp: boolean
           created_at: string
           delivery_state: Database["public"]["Enums"]["delivery_state"]
+          designation: string | null
+          dnc_reason: string | null
+          do_not_contact: boolean
           email: string | null
           id: string
           is_active: boolean
+          language: string
+          last_bounced_at: string | null
+          last_contacted_at: string | null
           name: string
           org_id: string
           phone: string | null
@@ -701,15 +887,26 @@ export type Database = {
             | Database["public"]["Enums"]["contact_channel"]
             | null
           priority: Database["public"]["Enums"]["contact_priority"]
+          sort_order: number
           updated_at: string
         }
         Insert: {
           account_id: string
+          always_cc?: boolean
+          channel_email?: boolean
+          channel_sms?: boolean
+          channel_whatsapp?: boolean
           created_at?: string
           delivery_state?: Database["public"]["Enums"]["delivery_state"]
+          designation?: string | null
+          dnc_reason?: string | null
+          do_not_contact?: boolean
           email?: string | null
           id?: string
           is_active?: boolean
+          language?: string
+          last_bounced_at?: string | null
+          last_contacted_at?: string | null
           name: string
           org_id: string
           phone?: string | null
@@ -717,15 +914,26 @@ export type Database = {
             | Database["public"]["Enums"]["contact_channel"]
             | null
           priority?: Database["public"]["Enums"]["contact_priority"]
+          sort_order?: number
           updated_at?: string
         }
         Update: {
           account_id?: string
+          always_cc?: boolean
+          channel_email?: boolean
+          channel_sms?: boolean
+          channel_whatsapp?: boolean
           created_at?: string
           delivery_state?: Database["public"]["Enums"]["delivery_state"]
+          designation?: string | null
+          dnc_reason?: string | null
+          do_not_contact?: boolean
           email?: string | null
           id?: string
           is_active?: boolean
+          language?: string
+          last_bounced_at?: string | null
+          last_contacted_at?: string | null
           name?: string
           org_id?: string
           phone?: string | null
@@ -733,6 +941,7 @@ export type Database = {
             | Database["public"]["Enums"]["contact_channel"]
             | null
           priority?: Database["public"]["Enums"]["contact_priority"]
+          sort_order?: number
           updated_at?: string
         }
         Relationships: [
@@ -1225,6 +1434,57 @@ export type Database = {
       }
     }
     Functions: {
+      account_archive: {
+        Args: { p_account: string; p_confirm_name: string; p_if_match: string }
+        Returns: undefined
+      }
+      account_contact_create: {
+        Args: { p_account: string; p_body: Json; p_if_match: string }
+        Returns: undefined
+      }
+      account_contact_delete: {
+        Args: { p_account: string; p_contact: string; p_if_match: string }
+        Returns: undefined
+      }
+      account_contact_update: {
+        Args: {
+          p_account: string
+          p_body: Json
+          p_contact: string
+          p_if_match: string
+        }
+        Returns: undefined
+      }
+      account_pause: {
+        Args: {
+          p_account: string
+          p_if_match: string
+          p_reason: string
+          p_until: string
+        }
+        Returns: undefined
+      }
+      account_restore: {
+        Args: { p_account: string; p_if_match: string }
+        Returns: undefined
+      }
+      account_resume: {
+        Args: { p_account: string; p_if_match: string }
+        Returns: undefined
+      }
+      account_update_chasing_settings: {
+        Args: { p_account: string; p_body: Json; p_if_match: string }
+        Returns: undefined
+      }
+      account_update_escalation: {
+        Args: {
+          p_account: string
+          p_if_match: string
+          p_p1_after_days: number
+          p_p2_after_days: number
+        }
+        Returns: undefined
+      }
       create_org: {
         Args: { p_name: string }
         Returns: {

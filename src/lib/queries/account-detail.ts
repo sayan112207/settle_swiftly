@@ -12,6 +12,7 @@ import {
   accountsQueryKeys,
   archiveAccount,
   pauseAccount,
+  restoreAccount,
   resumeAccount,
   updateChasingSettings,
 } from "@/lib/services/accounts";
@@ -106,6 +107,7 @@ export function useUpdateChasingSettings(accountId: string) {
   });
 }
 
+/** Archives the account. It stays readable under Accounts → Archived until restored. */
 export function useArchiveAccount(accountId: string) {
   const queryClient = useQueryClient();
   const queryKey = accountsQueryKeys.detail(accountId);
@@ -141,9 +143,49 @@ export function useArchiveAccount(accountId: string) {
       toast.error("Couldn't archive this account.");
     },
 
-    onSuccess: () => {
-      queryClient.removeQueries({ queryKey });
-      void queryClient.invalidateQueries({ queryKey: accountsQueryKeys.list() });
+    // The account stays readable under Accounts → Archived, so keep the
+    // returned copy rather than dropping the page into a 404.
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKey, data);
+      invalidateAfterArchiveChange(queryClient, accountId);
+    },
+  });
+}
+
+/**
+ * Archiving or restoring moves the account between the two list views and in
+ * or out of every total, so the lists, its tabs and the dashboard all refetch.
+ */
+function invalidateAfterArchiveChange(
+  queryClient: ReturnType<typeof useQueryClient>,
+  accountId: string,
+): void {
+  void queryClient.invalidateQueries({ queryKey: ["accounts", "list"] });
+  void queryClient.invalidateQueries({ queryKey: accountsQueryKeys.invoices(accountId) });
+  void queryClient.invalidateQueries({ queryKey: accountsQueryKeys.activityRoot(accountId) });
+  void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+}
+
+/** Restores an archived account (admins only). */
+export function useRestoreAccount(accountId: string) {
+  const queryClient = useQueryClient();
+  const queryKey = accountsQueryKeys.detail(accountId);
+
+  return useMutation({
+    mutationFn: (vars: { ifMatch: string }) => restoreAccount(accountId, vars.ifMatch),
+
+    onError: (error) => {
+      if (error instanceof AccountsApiError) {
+        toast.error(error.message);
+        return;
+      }
+      toast.error("Couldn't restore this account.");
+    },
+
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKey, data);
+      invalidateAfterArchiveChange(queryClient, accountId);
+      toast.success(`${data.name} is back in your accounts.`);
     },
   });
 }

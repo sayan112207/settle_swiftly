@@ -55,6 +55,7 @@ function formatTime(value: string) {
   return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
+/** The Settings tab: cadence, send window, terms, ownership and archive. Locked while paused, archived, or for non-admins. */
 export function AccountSettingsPanel({ accountId, detail }: Props) {
   const s = detail.settings;
   const navigate = accountDetailRoute.useNavigate();
@@ -87,9 +88,11 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
   const save = useUpdateChasingSettings(accountId);
   const resume = useResumeAccount(accountId);
 
-  const isPaused = s.archived_at === null && s.paused_at !== null;
+  const isArchived = s.archived_at !== null;
+  const isPaused = !isArchived && s.paused_at !== null;
   const canEdit = s.can_edit;
-  const locked = isPaused || !canEdit;
+  // An archived account is read-only until restored (the page banner has Restore).
+  const locked = isArchived || isPaused || !canEdit;
 
   const defaultByKey = useMemo(
     () => Object.fromEntries(s.default_steps.map((d) => [d.key, d])),
@@ -695,18 +698,24 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
       </div>
 
       {/* ── Danger zone ───────────────────────────────────────────────── */}
-      <section className="rounded-card border border-danger-edge bg-card p-5">
-        <h2 className="text-section font-bold tracking-tight text-danger">Danger zone</h2>
-        <p className="mt-2 text-prose font-normal text-fg-soft">
-          Stops every reminder and moves this account out of your working list. Invoices and history
-          are kept.
-        </p>
-        <div className="mt-3">
-          <AppButton variant="destructive" disabled={!canEdit} onClick={() => setArchiveOpen(true)}>
-            Stop all chasing and archive this account
-          </AppButton>
-        </div>
-      </section>
+      {isArchived ? null : (
+        <section className="rounded-card border border-danger-edge bg-card p-5">
+          <h2 className="text-section font-bold tracking-tight text-danger">Danger zone</h2>
+          <p className="mt-2 text-prose font-normal text-fg-soft">
+            Stops every reminder and moves this account to Accounts → Archived, out of your totals.
+            Invoices and history are kept, and you can restore it at any time.
+          </p>
+          <div className="mt-3">
+            <AppButton
+              variant="destructive"
+              disabled={!canEdit}
+              onClick={() => setArchiveOpen(true)}
+            >
+              Stop all chasing and archive this account
+            </AppButton>
+          </div>
+        </section>
+      )}
 
       <ArchiveDialog
         open={archiveOpen}
@@ -878,6 +887,7 @@ function TimeSelect({
   );
 }
 
+/** Confirms archiving by making the user type the account name; the server re-checks it. */
 function ArchiveDialog({
   open,
   onOpenChange,
@@ -902,7 +912,8 @@ function ArchiveDialog({
         </DialogTitle>
         <DialogDescription className="mt-2 text-prose font-normal text-fg-soft">
           {formatINR(detail.outstanding)} is still outstanding on this account. Archiving stops all
-          chasing. Type <span className="font-semibold text-fg">{target}</span> to confirm.
+          chasing and takes it out of your totals until you restore it. Type{" "}
+          <span className="font-semibold text-fg">{target}</span> to confirm.
         </DialogDescription>
 
         <label htmlFor="archive-confirm" className="sr-only">
