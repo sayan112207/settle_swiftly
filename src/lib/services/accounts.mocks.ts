@@ -1485,7 +1485,9 @@ export function mockRestoreAccount(accountId: string, ifMatch: string): AccountD
   const row = mockStore.archived.find((item) => item.account_id === accountId);
   if (row) mockStore.list.items.push(row);
   mockStore.archived = mockStore.archived.filter((item) => item.account_id !== accountId);
-  mockStore.list.total_count = mockStore.list.items.length;
+  // Mirrors the archive's decrement: the fixture's total covers more accounts
+  // than its sample rows, so recounting the rows would shrink it.
+  mockStore.list.total_count += 1;
   mockStore.list.filtered_count = mockStore.list.items.length;
 
   detail.settings.archived_at = null;
