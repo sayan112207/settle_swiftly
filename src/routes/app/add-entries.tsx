@@ -55,6 +55,13 @@ type Draft = {
 
 type Mode = AddEntriesSearch["mode"];
 
+/**
+ * An account this save brought into existence. Carried by id, not counted,
+ * because a brand-new account has no contacts and therefore cannot be chased —
+ * and the moment the user learns it exists is the moment to offer the fix.
+ */
+type CreatedAccount = { id: string; name: string };
+
 /** The account select's value for "this customer isn't in the list yet". */
 const NEW_ACCOUNT = "__new__";
 
@@ -89,7 +96,7 @@ function AddEntriesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [paste, setPaste] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<{ invoices: number; accounts: number } | null>(null);
+  const [saved, setSaved] = useState<{ invoices: number; accounts: CreatedAccount[] } | null>(null);
   const accountsQuery = useQuery({
     queryKey: accountsQueryKeys.list({ sort: "name", dir: "asc" }),
     queryFn: () => getAccounts({ sort: "name", dir: "asc" }),
@@ -166,7 +173,9 @@ function AddEntriesPage() {
    * answer, and why the created count comes from the response rather than from
    * how many names were sent.
    */
-  async function resolveAccounts(batch: Draft[]): Promise<{ drafts: Draft[]; created: number }> {
+  async function resolveAccounts(
+    batch: Draft[],
+  ): Promise<{ drafts: Draft[]; created: CreatedAccount[] }> {
     const names = [
       ...new Set(
         batch
@@ -175,7 +184,7 @@ function AddEntriesPage() {
           .filter((name) => name !== ""),
       ),
     ];
-    if (names.length === 0) return { drafts: batch, created: 0 };
+    if (names.length === 0) return { drafts: batch, created: [] };
 
     const { accounts: ensured } = await ensureAccounts(names);
     const byRequested = new Map(ensured.map((account) => [account.requested_name, account]));
@@ -189,8 +198,15 @@ function AddEntriesPage() {
         if (!match) throw new Error(`No account came back for "${draft.account_name}".`);
         return { ...draft, account_id: match.account_id, account_name: match.name };
       }),
-      // Distinct ids: two spellings of one new customer are one account.
-      created: new Set(ensured.filter((a) => a.created).map((a) => a.account_id)).size,
+      // Distinct by id: two spellings of one new customer are one account, and
+      // it must not be offered twice on the success screen.
+      created: [
+        ...new Map(
+          ensured
+            .filter((account) => account.created)
+            .map((account) => [account.account_id, { id: account.account_id, name: account.name }]),
+        ).values(),
+      ],
     };
   }
 
@@ -759,14 +775,21 @@ function DraftReview({
   );
 }
 
-/** Confirmation screen shown after a successful save, with links to view the invoices list or add more entries. */
+/**
+ * Confirmation screen shown after a successful save.
+ *
+ * Names each account that was created rather than counting them: every one
+ * arrives with no contacts and so cannot be chased, and "2 new accounts were
+ * created" leaves the user to go and find out which two. Each row links
+ * straight to its own add-contact form.
+ */
 function SuccessState({
   invoices,
   accounts,
   onMore,
 }: {
   invoices: number;
-  accounts: number;
+  accounts: CreatedAccount[];
   onMore: () => void;
 }) {
   return (
@@ -779,10 +802,40 @@ function SuccessState({
       </h1>
       <p className="mt-2 text-prose text-fg-soft">
         Your invoices were confirmed by the server and are ready to review.
-        {accounts
-          ? ` ${accounts} new ${accounts === 1 ? "account was" : "accounts were"} created along the way.`
-          : ""}
       </p>
+
+      {accounts.length > 0 ? (
+        <div className="mt-6 rounded-card border border-hairline bg-subtle p-4 text-left">
+          <p className="text-body font-semibold text-fg">
+            {accounts.length} new {accounts.length === 1 ? "account" : "accounts"} created
+          </p>
+          <p className="mt-1 text-prose text-fg-soft">
+            {accounts.length === 1 ? "It can't be chased" : "None of them can be chased"} until
+            {accounts.length === 1 ? " it has" : " they have"} a primary contact.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {accounts.map((account) => (
+              <li
+                key={account.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-card px-3 py-2"
+              >
+                <span className="min-w-0 truncate text-body font-semibold text-fg">
+                  {account.name}
+                </span>
+                <Link
+                  to="/app/accounts/$accountId"
+                  params={{ accountId: account.id }}
+                  search={{ tab: "contacts", add: "P0" }}
+                  className="shrink-0 rounded-nav px-2 py-1 text-body font-semibold text-accent hover:text-accent-hover"
+                >
+                  Add contact
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="mt-6 flex justify-center gap-3">
         <Link
           to="/app/invoices"
