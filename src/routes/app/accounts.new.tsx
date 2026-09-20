@@ -11,6 +11,7 @@ import {
   EMPTY_CONTACT,
   collectFieldErrors,
   contactFormSchema,
+  refreshShownErrors,
   toCreateBody,
   type ContactFieldErrors,
   type ContactFormValues,
@@ -228,8 +229,9 @@ function NewAccountPage() {
               errors={contactErrors}
               busy={busy}
               onChange={(key, value) => {
-                setContact((current) => ({ ...current, [key]: value }));
-                setContactErrors((current) => ({ ...current, [key]: undefined }));
+                const next = { ...contact, [key]: value };
+                setContact(next);
+                setContactErrors((current) => refreshShownErrors(next, current));
               }}
             />
           ) : null}

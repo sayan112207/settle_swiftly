@@ -123,3 +123,35 @@ export function collectFieldErrors(error: z.ZodError): ContactFieldErrors {
   }
   return next;
 }
+
+/**
+ * Re-validates after an edit and returns the messages still worth showing.
+ *
+ * Clearing only the edited field is not enough here, because several of the
+ * rules above are cross-field: "add an email address or a phone number" is
+ * raised on `email` *and* `phone`, so typing an email would satisfy the rule
+ * while the phone still carried the message. Turning a channel on or off moves
+ * errors between fields the same way.
+ *
+ * Only fields that were already flagged can keep a message. Re-running the
+ * whole schema on every keystroke would otherwise light up fields the user has
+ * not reached yet and tell them off for an empty form they are still filling.
+ */
+export function refreshShownErrors(
+  values: ContactFormValues,
+  shown: ContactFieldErrors,
+): ContactFieldErrors {
+  const flagged = Object.keys(shown) as (keyof ContactFormValues)[];
+  if (flagged.length === 0) return shown;
+
+  const parsed = contactFormSchema.safeParse(values);
+  if (parsed.success) return {};
+
+  const fresh = collectFieldErrors(parsed.error);
+  const next: ContactFieldErrors = {};
+  for (const key of flagged) {
+    const message = fresh[key];
+    if (message) next[key] = message;
+  }
+  return next;
+}

@@ -16,6 +16,9 @@ import type {
   CadenceRecipients,
   CadenceStep,
   CadenceTone,
+  ChaseStatus,
+  ContactPip,
+  ContactTier,
   CreateContactBody,
   EnsureAccountsResult,
   EscalationContact,
@@ -25,6 +28,7 @@ import type {
   UpdateEscalationBody,
 } from "@/lib/schemas/accounts";
 import { updateChasingSettingsBodySchema } from "@/lib/schemas/accounts";
+import { CHASE_STATUS_LABEL } from "@/lib/services/accounts-rules";
 import { dncReasonIsPresent } from "@/lib/schemas/accounts";
 
 /**
@@ -1080,7 +1084,8 @@ function synthesizeDetailFromListItem(item: AccountListItem): AccountDetail {
   };
 }
 
-function headerStatusFor(item: AccountListItem): string {
+/** The header line for a chase status, as the backend composes it. */
+function headerStatusFor(item: { chase_status: ChaseStatus }): string {
   switch (item.chase_status) {
     case "bounced_p0":
       return "Chasing paused — email bouncing";
@@ -1199,6 +1204,56 @@ export class MockAccountsConflictError extends Error {
   }
 }
 
+/**
+ * Recomputes an account's contact pips and chase status from its stored ladder.
+ *
+ * The real list derives both from the contacts on every read, so a mock that
+ * files a new P0 and leaves the row reading "Can't chase" would have the one
+ * screen that proves the contact worked still insisting it did not. Kept in
+ * terms of the same rules as `resolveChaseStatus` and `contactPip`: a tier is
+ * `present` when somebody on it is reachable, `bounced` when the only ones left
+ * bounce, `dnc` when all of them are do-not-contact.
+ */
+function syncChaseStateFromLadder(accountId: string): void {
+  const ladder = mockStore.contacts[accountId];
+  if (!ladder) return;
+
+  const pip = (tier: ContactTier): ContactPip => {
+    const onTier = ladder.contacts.filter((contact) => contact.tier === tier);
+    if (onTier.length === 0) return "missing";
+    if (onTier.some((c) => !c.do_not_contact && c.delivery_state !== "bounced")) return "present";
+    if (onTier.some((c) => !c.do_not_contact)) return "bounced";
+    return "dnc";
+  };
+
+  const row = mockStore.list.items.find((item) => item.account_id === accountId);
+  const detail = mockStore.details[accountId];
+  // Pausing is a property of the account, not the ladder, so it survives a
+  // contact change rather than being recomputed away.
+  const paused = row?.chase_status === "paused" || detail?.chase_status === "paused";
+  const usableP0 = ladder.contacts.filter((c) => c.tier === "P0" && !c.do_not_contact);
+  const status: ChaseStatus =
+    usableP0.length === 0
+      ? "no_p0"
+      : usableP0.every((c) => c.delivery_state === "bounced")
+        ? "bounced_p0"
+        : paused
+          ? "paused"
+          : "active";
+
+  const contacts = { p0: pip("P0"), p1: pip("P1"), p2: pip("P2") };
+  if (row) {
+    row.contacts = contacts;
+    row.chase_status = status;
+    row.status_label = CHASE_STATUS_LABEL[status];
+  }
+  if (detail) {
+    detail.chase_status = status;
+    detail.status_label = CHASE_STATUS_LABEL[status];
+    detail.header_status = headerStatusFor({ chase_status: status });
+  }
+}
+
 /** `POST /api/v1/accounts/{id}/contacts` against the fixture store. */
 export function mockCreateContact(
   accountId: string,
@@ -1248,9 +1303,11 @@ export function mockCreateContact(
   });
   contacts.updated_at = now;
   appendActivity(accountId, "contact_added", `${body.name} added as ${body.tier} contact.`);
+  syncChaseStateFromLadder(accountId);
   return structuredClone(contacts);
 }
 
+/** `PATCH /api/v1/accounts/{id}/contacts/{contactId}` against the fixture store. */
 export function mockUpdateContact(
   accountId: string,
   contactId: string,
@@ -1297,9 +1354,11 @@ export function mockUpdateContact(
   Object.assign(contact, body, { updated_at: bumpUpdatedAt() });
   contacts.updated_at = contact.updated_at;
   appendActivity(accountId, "contact_edited", `${contact.name} updated.`);
+  syncChaseStateFromLadder(accountId);
   return structuredClone(contacts);
 }
 
+/** `DELETE /api/v1/accounts/{id}/contacts/{contactId}` against the fixture store. */
 export function mockDeleteContact(
   accountId: string,
   contactId: string,
@@ -1329,6 +1388,7 @@ export function mockDeleteContact(
   contacts.contacts = contacts.contacts.filter((c) => c.contact_id !== contactId);
   contacts.updated_at = bumpUpdatedAt();
   appendActivity(accountId, "contact_removed", `${name} removed.`);
+  syncChaseStateFromLadder(accountId);
   return structuredClone(contacts);
 }
 

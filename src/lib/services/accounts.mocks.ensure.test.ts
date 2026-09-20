@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  getMockAccountContacts,
   getMockAccountsList,
+  mockCreateContact,
   mockEnsureAccounts,
   resetAccountsMocks,
 } from "@/lib/services/accounts.mocks";
@@ -103,5 +105,67 @@ describe("mockEnsureAccounts", () => {
 
     expect(accounts).toHaveLength(0);
     expect(getMockAccountsList().total_count).toBe(before);
+  });
+});
+
+describe("mockCreateContact", () => {
+  /** A fresh account and the ladder token its first contact has to carry. */
+  function newAccount(name: string) {
+    resetAccountsMocks();
+    const { accounts } = mockEnsureAccounts([name]);
+    const id = accounts[0]!.account_id;
+    return { id, ifMatch: getMockAccountContacts(id)!.updated_at };
+  }
+  const row = (id: string) => getMockAccountsList().items.find((item) => item.account_id === id);
+
+  const CONTACT = {
+    tier: "P0" as const,
+    name: "Rajat Mehta",
+    email: "rajat@example.com",
+    channel_email: true,
+  };
+
+  test("a first P0 makes the account chaseable in the list", () => {
+    const { id, ifMatch } = newAccount("Nilgiri Roasters");
+    expect(row(id)?.chase_status).toBe("no_p0");
+
+    mockCreateContact(id, CONTACT, ifMatch);
+
+    // The real list derives both of these from the ladder on every read, so a
+    // row still reading "Can't chase" would contradict the contact just added.
+    expect(row(id)?.chase_status).toBe("active");
+    expect(row(id)?.status_label).toBe("Active");
+    expect(row(id)?.contacts.p0).toBe("present");
+  });
+
+  test("a P1 does not make an account chaseable", () => {
+    const { id, ifMatch } = newAccount("Nilgiri Roasters");
+
+    mockCreateContact(id, { ...CONTACT, tier: "P1" }, ifMatch);
+
+    expect(row(id)?.contacts.p1).toBe("present");
+    expect(row(id)?.contacts.p0).toBe("missing");
+    expect(row(id)?.chase_status).toBe("no_p0");
+  });
+
+  test("a do-not-contact P0 is not a usable one", () => {
+    const { id, ifMatch } = newAccount("Nilgiri Roasters");
+
+    mockCreateContact(
+      id,
+      { ...CONTACT, do_not_contact: true, dnc_reason: "Asked not to be chased" },
+      ifMatch,
+    );
+
+    expect(row(id)?.contacts.p0).toBe("dnc");
+    expect(row(id)?.chase_status).toBe("no_p0");
+  });
+
+  test("works on an account with no stored contacts fixture", () => {
+    // Every account created during a session is in this state: the read
+    // synthesizes an empty ladder, so the create has to accept one too.
+    const { id, ifMatch } = newAccount("Nilgiri Roasters");
+    mockCreateContact(id, CONTACT, ifMatch);
+    expect(getMockAccountContacts(id)?.contacts).toHaveLength(1);
   });
 });

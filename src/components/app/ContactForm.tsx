@@ -6,6 +6,7 @@ import {
   EMPTY_CONTACT,
   collectFieldErrors,
   contactFormSchema,
+  refreshShownErrors,
   toCreateBody,
   type ContactFieldErrors,
   type ContactFormValues,
@@ -228,8 +229,9 @@ export function ContactForm({
         busy={busy}
         autoFocus
         onChange={(key, value) => {
-          setValues((current) => ({ ...current, [key]: value }));
-          setErrors((current) => ({ ...current, [key]: undefined }));
+          const next = { ...values, [key]: value };
+          setValues(next);
+          setErrors((current) => refreshShownErrors(next, current));
         }}
       />
       <div className="flex justify-end gap-3">
