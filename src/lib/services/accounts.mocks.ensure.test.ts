@@ -1,8 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  ACCOUNT_IDS,
+  getMockAccountContacts,
+  getMockAccountDetail,
+  getMockAccountInvoices,
   getMockAccountsList,
+  mockCreateContact,
+  mockUpdateContact,
   mockEnsureAccounts,
+  mockPauseAccount,
   resetAccountsMocks,
 } from "@/lib/services/accounts.mocks";
 
@@ -103,5 +110,178 @@ describe("mockEnsureAccounts", () => {
 
     expect(accounts).toHaveLength(0);
     expect(getMockAccountsList().total_count).toBe(before);
+  });
+});
+
+describe("mockCreateContact", () => {
+  /** A fresh account and the ladder token its first contact has to carry. */
+  function newAccount(name: string) {
+    resetAccountsMocks();
+    const { accounts } = mockEnsureAccounts([name]);
+    const id = accounts[0]!.account_id;
+    return { id, ifMatch: getMockAccountContacts(id)!.updated_at };
+  }
+  const row = (id: string) => getMockAccountsList().items.find((item) => item.account_id === id);
+
+  const CONTACT = {
+    tier: "P0" as const,
+    name: "Rajat Mehta",
+    email: "rajat@example.com",
+    channel_email: true,
+  };
+
+  test("a first P0 makes the account chaseable in the list", () => {
+    const { id, ifMatch } = newAccount("Nilgiri Roasters");
+    expect(row(id)?.chase_status).toBe("no_p0");
+
+    mockCreateContact(id, CONTACT, ifMatch);
+
+    // The real list derives both of these from the ladder on every read, so a
+    // row still reading "Can't chase" would contradict the contact just added.
+    expect(row(id)?.chase_status).toBe("active");
+    expect(row(id)?.status_label).toBe("Active");
+    expect(row(id)?.contacts.p0).toBe("present");
+  });
+
+  test("a P1 does not make an account chaseable", () => {
+    const { id, ifMatch } = newAccount("Nilgiri Roasters");
+
+    mockCreateContact(id, { ...CONTACT, tier: "P1" }, ifMatch);
+
+    expect(row(id)?.contacts.p1).toBe("present");
+    expect(row(id)?.contacts.p0).toBe("missing");
+    expect(row(id)?.chase_status).toBe("no_p0");
+  });
+
+  test("a do-not-contact P0 is not a usable one", () => {
+    const { id, ifMatch } = newAccount("Nilgiri Roasters");
+
+    mockCreateContact(
+      id,
+      { ...CONTACT, do_not_contact: true, dnc_reason: "Asked not to be chased" },
+      ifMatch,
+    );
+
+    expect(row(id)?.contacts.p0).toBe("dnc");
+    expect(row(id)?.chase_status).toBe("no_p0");
+  });
+
+  test("works on an account with no stored contacts fixture", () => {
+    // Every account created during a session is in this state: the read
+    // synthesizes an empty ladder, so the create has to accept one too.
+    const { id, ifMatch } = newAccount("Nilgiri Roasters");
+    mockCreateContact(id, CONTACT, ifMatch);
+    expect(getMockAccountContacts(id)?.contacts).toHaveLength(1);
+  });
+});
+
+describe("invoice chase reasons follow the ladder", () => {
+  /** Every reason on the account's invoices, deduplicated. */
+  function reasons(accountId: string) {
+    const invoices = getMockAccountInvoices(accountId);
+    return [
+      ...new Set(
+        (invoices?.groups ?? []).flatMap((group) =>
+          group.invoices.map((invoice) => invoice.chase_disabled_reason),
+        ),
+      ),
+    ];
+  }
+
+  test("fixing a bouncing P0 clears the reason from every invoice", () => {
+    resetAccountsMocks();
+    const id = ACCOUNT_IDS.sharma;
+    // Sharma ships bounced_p0: every invoice names the bouncing contact.
+    expect(reasons(id)).toEqual(["Can't chase — Rajat Mehta's email is bouncing"]);
+
+    const ladder = getMockAccountContacts(id)!;
+    mockCreateContact(
+      id,
+      { tier: "P0", name: "Reachable Replacement", email: "reachable@example.com" },
+      ladder.updated_at,
+    );
+
+    // The header says Active now, and the invoice rows must not still be
+    // telling the user the account can't be chased.
+    expect(reasons(id)).toEqual([null]);
+  });
+
+  test("a paused account says so on its invoices", () => {
+    resetAccountsMocks();
+    const id = ACCOUNT_IDS.sharma;
+    const detail = getMockAccountDetail(id)!;
+
+    mockPauseAccount(id, { reason: "Dispute" }, detail.updated_at);
+
+    // Pausing writes chase_status onto the detail and never touches the list
+    // row, so a row-first lookup would still report the bounce here.
+    expect(reasons(id)).toEqual(["Chasing is paused for this account"]);
+  });
+
+  test("silencing the replacement puts the bouncing reason back", () => {
+    resetAccountsMocks();
+    const id = ACCOUNT_IDS.sharma;
+
+    const before = getMockAccountContacts(id)!;
+    const added = mockCreateContact(
+      id,
+      { tier: "P0", name: "Reachable Replacement", email: "reachable@example.com" },
+      before.updated_at,
+    );
+    expect(reasons(id)).toEqual([null]);
+
+    // Mark the replacement do-not-contact. The original P0 is still there and
+    // still bouncing, so the account falls back to bounced_p0 rather than to
+    // "no primary contact" — the two need different fixes and say so.
+    const replacement = added.contacts.find((c) => c.name === "Reachable Replacement")!;
+    mockUpdateContact(
+      id,
+      replacement.contact_id,
+      { do_not_contact: true, dnc_reason: "Asked not to be chased" },
+      added.updated_at,
+    );
+
+    expect(reasons(id)).toEqual(["Can't chase — Rajat Mehta's email is bouncing"]);
+  });
+});
+
+describe("accounts whose ladder the fixtures never spelled out", () => {
+  const row = (id: string) => getMockAccountsList().items.find((item) => item.account_id === id);
+
+  test("adding a P1 to an active account leaves it chaseable", () => {
+    resetAccountsMocks();
+    const id = ACCOUNT_IDS.meridian;
+    // Meridian carries pips and an Active status but no ladder fixture, so the
+    // first read synthesizes an empty one. Recomputing the summary from that
+    // would report the account as having no primary contact.
+    expect(row(id)?.chase_status).toBe("active");
+    expect(row(id)?.contacts.p0).toBe("present");
+
+    const ladder = getMockAccountContacts(id)!;
+    expect(ladder.contacts).toHaveLength(0);
+    mockCreateContact(
+      id,
+      { tier: "P1", name: "Second Escalation", email: "second@example.com" },
+      ladder.updated_at,
+    );
+
+    expect(row(id)?.chase_status).toBe("active");
+    expect(row(id)?.status_label).toBe("Active");
+    expect(row(id)?.contacts.p0).toBe("present");
+  });
+
+  test("a brand-new account is still recomputed, its empty ladder being the truth", () => {
+    resetAccountsMocks();
+    const { accounts } = mockEnsureAccounts(["Nilgiri Roasters"]);
+    const id = accounts[0]!.account_id;
+    const ladder = getMockAccountContacts(id)!;
+
+    mockCreateContact(
+      id,
+      { tier: "P0", name: "Rajat Mehta", email: "rajat@example.com" },
+      ladder.updated_at,
+    );
+
+    expect(row(id)?.chase_status).toBe("active");
   });
 });
