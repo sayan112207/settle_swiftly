@@ -201,8 +201,9 @@ POST   /api/v1/accounts/{id}/resume
 ```
 
 `POST /api/v1/accounts` resolves a batch of names to accounts, creating the
-ones the org does not have yet, and answers `201` with a row per requested
-name:
+ones the org does not have yet, and answers with a row per requested name —
+`201` when at least one account was created, `200` when every name already
+matched one:
 
 ```json
 {

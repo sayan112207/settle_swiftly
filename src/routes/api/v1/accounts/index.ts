@@ -31,7 +31,13 @@ export const Route = createFileRoute("/api/v1/accounts/")({
         handleApi(
           { code: "save_failed", message: "Couldn't add that account. Please try again." },
           async () => {
-            return json(await ensureAccounts(await readJsonBody(request)), 201);
+            const result = await ensureAccounts(await readJsonBody(request));
+            // 201 only when something was actually created. A batch whose
+            // names all matched existing accounts created nothing, and saying
+            // otherwise would make the status disagree with every row's
+            // `created` flag.
+            const created = result.accounts.some((account) => account.created);
+            return json(result, created ? 201 : 200);
           },
         ),
     },
