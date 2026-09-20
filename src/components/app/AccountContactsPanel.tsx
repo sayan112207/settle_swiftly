@@ -66,10 +66,19 @@ type AccountContactsPanelProps = {
   accountId: string;
   /** Archived accounts: every control is disabled until the account is restored. */
   readOnly?: boolean;
+  /** Open this tier's add-contact form on arrival (the `?add=` search param). */
+  openAddFor?: ContactTier | undefined;
+  /** Called once that form is submitted or dismissed, so the param can be dropped. */
+  onAddFormClosed?: (() => void) | undefined;
 };
 
 /** The Contacts tab: the P0/P1/P2 ladder and escalation timing. `readOnly` disables every control. */
-export function AccountContactsPanel({ accountId, readOnly = false }: AccountContactsPanelProps) {
+export function AccountContactsPanel({
+  accountId,
+  readOnly = false,
+  openAddFor,
+  onAddFormClosed,
+}: AccountContactsPanelProps) {
   const contactsQuery = useQuery({
     queryKey: accountsQueryKeys.contacts(accountId),
     queryFn: () => getAccountContacts(accountId),
@@ -155,6 +164,8 @@ export function AccountContactsPanel({ accountId, readOnly = false }: AccountCon
       <ContactsLadder
         data={data}
         busy={mutating || readOnly}
+        openAddFor={readOnly ? undefined : openAddFor}
+        onAddFormClosed={onAddFormClosed}
         onUpdate={(contactId, body) => {
           runExclusive((release) =>
             updateContact.mutate(
@@ -198,6 +209,8 @@ export function AccountContactsPanel({ accountId, readOnly = false }: AccountCon
 function ContactsLadder({
   data,
   busy,
+  openAddFor,
+  onAddFormClosed,
   onUpdate,
   onDelete,
   onCreate,
@@ -205,6 +218,8 @@ function ContactsLadder({
 }: {
   data: AccountContacts;
   busy: boolean;
+  openAddFor?: ContactTier | undefined;
+  onAddFormClosed?: (() => void) | undefined;
   onUpdate: (contactId: string, body: UpdateContactBody) => void;
   onDelete: (contactId: string) => void;
   /** `done` closes the form; it runs only when the server accepted the contact. */
@@ -212,7 +227,19 @@ function ContactsLadder({
   onSaveEscalation: (body: { p1_after_days: number; p2_after_days: number }) => void;
 }) {
   /** Which tier's add-form is open, if any. One at a time. */
-  const [addingTo, setAddingTo] = useState<ContactTier | null>(null);
+  const [addingTo, setAddingTo] = useState<ContactTier | null>(openAddFor ?? null);
+
+  // Arriving with `?add=` again — clicking the strip from another tab, or a
+  // second link — must reopen the form even though the component stayed mounted.
+  useEffect(() => {
+    if (openAddFor) setAddingTo(openAddFor);
+  }, [openAddFor]);
+
+  /** Closing always clears the search param, whoever opened the form. */
+  function closeAddForm() {
+    setAddingTo(null);
+    onAddFormClosed?.();
+  }
   const [p1Days, setP1Days] = useState(data.p1_after_days);
   const [p2Days, setP2Days] = useState(data.p2_after_days);
   const p1Ref = useRef(p1Days);
@@ -297,8 +324,8 @@ function ContactsLadder({
                 <ContactForm
                   tier={tier.id}
                   busy={busy}
-                  onCancel={() => setAddingTo(null)}
-                  onSubmit={(body) => onCreate(body, () => setAddingTo(null))}
+                  onCancel={closeAddForm}
+                  onSubmit={(body) => onCreate(body, closeAddForm)}
                 />
               ) : (
                 <AppButton variant="secondary" disabled={busy} onClick={() => setAddingTo(tier.id)}>

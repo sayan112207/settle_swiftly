@@ -246,6 +246,7 @@ export function ContactForm({
   );
 }
 
+/** A form field with its label above and its validation message below. */
 function Labelled({
   label,
   error,
@@ -268,6 +269,7 @@ function Labelled({
   );
 }
 
+/** A channel or Always-CC switch, matching the contact card's own toggles. */
 function Toggle({
   label,
   name,

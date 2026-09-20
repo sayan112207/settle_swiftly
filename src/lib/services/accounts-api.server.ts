@@ -378,7 +378,9 @@ async function loadSettings(context: AccountContext): Promise<AccountChasingSett
 
 /** The action strip for an account nobody can be chased on, or null. */
 function recommendation(state: AccountState): AccountDetail["recommendation"] {
-  const contactsHref = `/app/accounts/${state.row.id}?tab=contacts`;
+  // `add=P0` opens the form, not just the tab — both recommendations exist to
+  // get a reachable P0 onto this account.
+  const contactsHref = `/app/accounts/${state.row.id}?tab=contacts&add=P0`;
   if (state.status === "no_p0") {
     return {
       sentence: "Nobody on this account can be chased yet. Add a P0 contact to start.",

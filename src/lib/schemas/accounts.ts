@@ -189,6 +189,14 @@ export const accountDetailTabSchema = z.enum([
 /** URL search for `/app/accounts/$accountId`. */
 export const accountDetailSearchSchema = z.object({
   tab: accountDetailTabSchema.default("invoices").catch("invoices"),
+  /**
+   * Opens the Contacts tab with the add-contact form already showing, for that
+   * tier. The recommendation strip links here: its whole message is "this
+   * account can't be chased, add a P0", so landing on the tab and leaving the
+   * user to find the button — or doing nothing at all, when they are already
+   * on the tab — is the strip failing at the one thing it is for.
+   */
+  add: contactTierSchema.optional().catch(undefined),
 });
 
 function agingSlot<B extends z.infer<typeof agingBucketSchema>>(bucket: B) {
