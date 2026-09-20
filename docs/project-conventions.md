@@ -152,7 +152,7 @@ exists purely to fill space.
 - All tables use TanStack Table.
 - Every list: priority order is the default sort. Show active filters as
   removable chips, and always display the filtered count and summed amount
-  (e.g. "47 invoices · ₹18,40,000").
+  (e.g. "47 invoices · ₹18,40,000.00").
 - Bulk action buttons state the count: "Snooze 47 invoices", never "Snooze all".
 - No dead clicks. Every button either works, opens an explanatory popover, or is
   disabled with a tooltip.

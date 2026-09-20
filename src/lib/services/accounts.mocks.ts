@@ -1590,14 +1590,22 @@ export function mockEnsureAccounts(names: readonly string[]): EnsureAccountsResu
     [...mockStore.list.items, ...mockStore.archived].map((item) => [normalize(item.name), item]),
   );
 
-  const seen = new Set<string>();
+  // Two different dedup keys, mirroring the RPC:
+  //   answered — the exact trimmed name, because the response carries a row
+  //              per *requested* spelling. The caller maps its drafts by the
+  //              name it sent, so dropping a repeated spelling would leave one
+  //              of them unanswered.
+  //   existing — the normalized name, because that is what decides whether an
+  //              account has to be created.
+  const answered = new Set<string>();
+  const createdIds = new Set<string>();
   const accounts: EnsureAccountsResult["accounts"] = [];
 
   for (const raw of names) {
     const name = raw.trim();
+    if (name === "" || answered.has(name)) continue;
+    answered.add(name);
     const key = normalize(name);
-    if (name === "" || seen.has(key)) continue;
-    seen.add(key);
 
     const match = existing.get(key);
     if (match) {
@@ -1605,7 +1613,9 @@ export function mockEnsureAccounts(names: readonly string[]): EnsureAccountsResu
         requested_name: name,
         account_id: match.account_id,
         name: match.name,
-        created: false,
+        // True when this same call created it a moment ago under another
+        // spelling — the RPC reports the id it inserted, not the spelling.
+        created: createdIds.has(match.account_id),
       });
       continue;
     }
@@ -1632,6 +1642,7 @@ export function mockEnsureAccounts(names: readonly string[]): EnsureAccountsResu
     // collapse the org total to the size of the visible page.
     mockStore.list.org_totals.account_count += 1;
     existing.set(key, item);
+    createdIds.add(item.account_id);
     accounts.push({
       requested_name: name,
       account_id: item.account_id,

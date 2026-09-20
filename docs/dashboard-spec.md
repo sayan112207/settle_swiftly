@@ -40,12 +40,12 @@ Header copy: `<h1>` reads `Good morning, Priya`. Metadata line: `Monday, 17 Augu
 
 Four tiles in a row, `gap: var(--sp-4)`. Each is a card (`bg card`, `1px var(--border-hairline)`, `--r-card`, padding `18px 20px`, **no shadow**) and each is a real `<a>` wrapping its whole content.
 
-| Eyebrow           | Value      | Sub-line                 | Links to                   |
-| ----------------- | ---------- | ------------------------ | -------------------------- |
-| TOTAL OUTSTANDING | ₹18,40,000 | 47 accounts              | `/accounts`                |
-| OVERDUE           | ₹9,20,000  | 50.0% of book            | `/invoices?status=overdue` |
-| OPEN INVOICES     | 128        | across 47 accounts       | `/invoices`                |
-| MISSING CONTACTS  | 6          | accounts can't be chased | `/accounts/contacts-fill`  |
+| Eyebrow           | Value         | Sub-line                 | Links to                   |
+| ----------------- | ------------- | ------------------------ | -------------------------- |
+| TOTAL OUTSTANDING | ₹18,40,000.00 | 47 accounts              | `/accounts`                |
+| OVERDUE           | ₹9,20,000.00  | 50.0% of book            | `/invoices?status=overdue` |
+| OPEN INVOICES     | 128           | across 47 accounts       | `/invoices`                |
+| MISSING CONTACTS  | 6             | accounts can't be chased | `/accounts/contacts-fill`  |
 
 - Eyebrow: `--fs-eyebrow`, uppercase, `0.08em`, `--text-muted`.
 - Value: `--fs-metric` / 700 / -0.02em, `--text-primary`. Overdue value is `--danger-text`.
@@ -61,15 +61,15 @@ Full-width horizontal bar beneath the tiles. Section heading `<h2>` reads `Where
 
 Segments, left to right, widths proportional to amount:
 
-| Label       | Amount    | Share | Colour token          |
-| ----------- | --------- | ----- | --------------------- |
-| Not yet due | ₹9,20,000 | 50.0% | `--aging-not-yet-due` |
-| 1–30        | ₹2,60,000 | 14.1% | `--aging-1-30`        |
-| 31–60       | ₹2,40,000 | 13.0% | `--aging-31-60`       |
-| 61–90       | ₹1,80,000 | 9.8%  | `--aging-61-90`       |
-| 90+         | ₹2,40,000 | 13.0% | `--aging-90-plus`     |
+| Label       | Amount       | Share | Colour token          |
+| ----------- | ------------ | ----- | --------------------- |
+| Not yet due | ₹9,20,000.00 | 50.0% | `--aging-not-yet-due` |
+| 1–30        | ₹2,60,000.00 | 14.1% | `--aging-1-30`        |
+| 31–60       | ₹2,40,000.00 | 13.0% | `--aging-31-60`       |
+| 61–90       | ₹1,80,000.00 | 9.8%  | `--aging-61-90`       |
+| 90+         | ₹2,40,000.00 | 13.0% | `--aging-90-plus`     |
 
-Total ₹18,40,000. **The segments must sum to the Total outstanding tile.** A unit test asserts this.
+Total ₹18,40,000.00. **The segments must sum to the Total outstanding tile.** A unit test asserts this.
 
 - Bar height 10px, radius `--r-pill`, no gaps between segments.
 - Labels sit beneath each segment: bucket name at `--fs-eyebrow`/600/`--text-muted`, amount at `--fs-prose`/600/`--text-primary`.
@@ -105,7 +105,7 @@ Real `<table>`, wrapped in `<div style="overflow-x:auto">`. Seven columns:
 | 1   | `<span class="sr-only">Select</span>` | —         | header checkbox: select all                     |
 | 2   | ACCOUNT                               | left      | plain text, not a link in this build            |
 | 3   | INVOICE                               | left      | `INV-1042` format, monospace-free, tabular-nums |
-| 4   | AMOUNT                                | **right** | `₹4,60,000`                                     |
+| 4   | AMOUNT                                | **right** | `₹4,60,000.00`                                  |
 | 5   | OVERDUE                               | **right** | `38 days`                                       |
 | 6   | PRIORITY                              | left      | badge                                           |
 | 7   | REASON                                | left      | plain-language sentence                         |
@@ -122,14 +122,14 @@ Plus an unheaded eighth cell at the far right holding the per-row Chase button.
 
 Rows 1–3 render pre-checked.
 
-| ✓   | Account                     | Invoice  | Amount    | Overdue | Priority  | Reason                            |
-| --- | --------------------------- | -------- | --------- | ------- | --------- | --------------------------------- |
-| ✓   | Meridian Industries Pvt Ltd | INV-1042 | ₹4,60,000 | 38 days | Escalate  | Largest overdue balance, 38 days  |
-| ✓   | Nimbus Creative LLP         | INV-2052 | ₹2,80,000 | 40 days | Escalate  | Promise broken on 8 Aug           |
-| ✓   | Shakti Engineering Pvt Ltd  | INV-2038 | ₹2,40,000 | 52 days | Escalate  | Second reminder went unanswered   |
-|     | Anand & Sons Traders        | INV-1187 | ₹95,000   | 44 days | Chase now | Crosses the 45-day mark tomorrow  |
-|     | Pinnacle Industries LLP     | INV-1402 | ₹62,000   | 9 days  | Watch     | Small balance, first reminder due |
-|     | Orbit Labs Pvt Ltd          | INV-1998 | ₹22,000   | 61 days | Watch     | Small amount but 61 days old      |
+| ✓   | Account                     | Invoice  | Amount       | Overdue | Priority  | Reason                            |
+| --- | --------------------------- | -------- | ------------ | ------- | --------- | --------------------------------- |
+| ✓   | Meridian Industries Pvt Ltd | INV-1042 | ₹4,60,000.00 | 38 days | Escalate  | Largest overdue balance, 38 days  |
+| ✓   | Nimbus Creative LLP         | INV-2052 | ₹2,80,000.00 | 40 days | Escalate  | Promise broken on 8 Aug           |
+| ✓   | Shakti Engineering Pvt Ltd  | INV-2038 | ₹2,40,000.00 | 52 days | Escalate  | Second reminder went unanswered   |
+|     | Anand & Sons Traders        | INV-1187 | ₹95,000.00   | 44 days | Chase now | Crosses the 45-day mark tomorrow  |
+|     | Pinnacle Industries LLP     | INV-1402 | ₹62,000.00   | 9 days  | Watch     | Small balance, first reminder due |
+|     | Orbit Labs Pvt Ltd          | INV-1998 | ₹22,000.00   | 61 days | Watch     | Small amount but 61 days old      |
 
 **Two accounts that appeared in the original design are deliberately absent:**
 
@@ -175,7 +175,7 @@ Four tile skeletons, one aging-bar skeleton, six table row skeletons. Skeleton b
 Replace the Chase now table (only the table, keep tiles and aging bar) with a centred empty state, max-width 480px:
 
 - 40px thin-stroke line icon, `--text-muted`, 1.6 stroke.
-- Heading, `--fs-section`/700: `Nothing overdue. All ₹18,40,000 is current.`
+- Heading, `--fs-section`/700: `Nothing overdue. All ₹18,40,000.00 is current.`
 - Line, `--fs-prose`/400/`--text-secondary`: `We'll start chasing again the moment something slips.`
 - **No button.** There is nothing to do.
 
@@ -186,7 +186,7 @@ All four tiles show `—`. A single inline message above the tile row: `Couldn't
 ### Overflow
 
 - A 60-character account name ellipsises with a `title` attribute.
-- A value of `₹4,20,00,000` must not wrap or clip inside its tile. Test this specific string.
+- A value of `₹4,20,00,000.00` must not wrap or clip inside its tile. Test this specific string.
 
 ### Everything-is-aged edge case
 
@@ -196,7 +196,7 @@ If the main queue is empty _because_ every invoice is 90+ days old, do not rende
 
 ## 7. Formatting rules
 
-- **Currency:** Indian digit grouping, always. `₹4,82,000.00`, `₹18,40,000.00`. Symbol prefixed, no space. Paise always shown, including on whole amounts — `Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })`. Fixed width keeps the decimal points on one axis in a right-aligned column, and stops a stored `125000.50` from reading as `₹1,25,001`. **Never abbreviate on desktop.**
+- **Currency:** Indian digit grouping, always. `₹4,82,000.00`, `₹18,40,000.00`. Symbol prefixed, no space. Paise always shown, including on whole amounts — `Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })`. Fixed width keeps the decimal points on one axis in a right-aligned column, and stops a stored `125000.50` from reading as `₹1,25,001.00`. **Never abbreviate on desktop.**
 - **Zero:** `₹0.00` in `--text-muted`. Never `—`.
 - **Dates:** `17 Aug 2026` in tables. `8 Aug` only where the year is unambiguous in surrounding context.
 - **Relative time:** `4 days ago`, `Today · 09:12`, `Never`. Never "recently".
@@ -227,7 +227,7 @@ Aging buckets    Not yet due · 1–30 · 31–60 · 61–90 · 90+
 - Tab reaches every nav item, every tile, the header checkbox, every row checkbox, every row Chase button, and the bulk button — with a visible outline at each stop.
 - A screen reader announces the Chase now table with seven column headers.
 - No `#9a9a92`, no `#18A873` as a fill or as text, no `#B08900` in `src/routes/app/`, `src/components/app/`, or `src/styles/app-tokens.css`. The marketing palette in `src/styles.css` is out of scope for this rule.
-- The Overdue tile reads `₹9,20,000` and the aging segments sum to `₹18,40,000`.
+- The Overdue tile reads `₹9,20,000.00` and the aging segments sum to `₹18,40,000.00`.
 - No Disputed invoice and no account without a P0 contact appears in the table.
 - All four tiles link to distinct destinations.
 - Resizing below 1100px scrolls the table horizontally rather than compressing columns.

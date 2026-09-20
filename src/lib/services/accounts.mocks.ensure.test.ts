@@ -67,14 +67,32 @@ describe("mockEnsureAccounts", () => {
     expect(getMockAccountsList().total_count).toBe(before);
   });
 
-  test("one batch naming the same new customer twice creates one account", () => {
+  test("two spellings of one new customer: one account, but a row for each", () => {
     resetAccountsMocks();
     const before = getMockAccountsList().total_count;
 
     const { accounts } = mockEnsureAccounts(["Nilgiri Roasters", "  nilgiri   roasters  "]);
 
-    expect(accounts).toHaveLength(1);
+    // One account — but the caller maps its drafts by the name it sent, so a
+    // spelling that got no row back would fail the whole batch.
     expect(getMockAccountsList().total_count).toBe(before + 1);
+    expect(accounts).toHaveLength(2);
+    expect(accounts.map((a) => a.requested_name)).toEqual([
+      "Nilgiri Roasters",
+      "nilgiri   roasters",
+    ]);
+    expect(new Set(accounts.map((a) => a.account_id)).size).toBe(1);
+    // Both rows report the id as created, as the RPC does; the caller counts
+    // distinct ids rather than rows.
+    expect(accounts.every((a) => a.created)).toBe(true);
+  });
+
+  test("the same spelling twice is answered once", () => {
+    resetAccountsMocks();
+
+    const { accounts } = mockEnsureAccounts(["Nilgiri Roasters", "Nilgiri Roasters"]);
+
+    expect(accounts).toHaveLength(1);
   });
 
   test("skips blank names rather than creating an unnamed account", () => {
