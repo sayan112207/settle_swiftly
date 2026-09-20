@@ -1,0 +1,107 @@
+import { describe, expect, test } from "bun:test";
+
+import {
+  getMockAccountsList,
+  mockEnsureAccounts,
+  resetAccountsMocks,
+} from "@/lib/services/accounts.mocks";
+
+describe("mockEnsureAccounts", () => {
+  test("creates an account the fixture book has never billed", () => {
+    resetAccountsMocks();
+    const before = getMockAccountsList().total_count;
+
+    const { accounts } = mockEnsureAccounts(["Nilgiri Roasters"]);
+
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0]?.created).toBe(true);
+    expect(accounts[0]?.name).toBe("Nilgiri Roasters");
+    expect(accounts[0]?.requested_name).toBe("Nilgiri Roasters");
+    expect(getMockAccountsList().total_count).toBe(before + 1);
+  });
+
+  test("a new account is listed as unchaseable, not active", () => {
+    resetAccountsMocks();
+    const { accounts } = mockEnsureAccounts(["Nilgiri Roasters"]);
+    const row = getMockAccountsList().items.find(
+      (item) => item.account_id === accounts[0]?.account_id,
+    );
+
+    // No contacts means no P0, and the spec is explicit that an account
+    // without one cannot be chased. Showing it as Active would promise
+    // chasing that will never happen.
+    expect(row?.chase_status).toBe("no_p0");
+    expect(row?.status_label).toBe("Can't chase");
+    expect(row?.outstanding).toBe("0.00");
+    expect(row?.open_count).toBe(0);
+  });
+
+  test("keeps the org total an org total, not a page count", () => {
+    resetAccountsMocks();
+    const before = getMockAccountsList();
+    // The fixture is 47 accounts in the org showing 12 of them. Recounting
+    // from `items` here would collapse the org total onto the visible page.
+    expect(before.org_totals.account_count).toBe(47);
+    expect(before.items.length).toBe(12);
+
+    mockEnsureAccounts(["Nilgiri Roasters"]);
+
+    const after = getMockAccountsList();
+    expect(after.org_totals.account_count).toBe(48);
+    expect(after.total_count).toBe(48);
+    expect(after.items.length).toBe(13);
+  });
+
+  test("matches an existing account instead of creating a second one", () => {
+    resetAccountsMocks();
+    const existing = getMockAccountsList().items[0]!;
+    const before = getMockAccountsList().total_count;
+
+    const { accounts } = mockEnsureAccounts([existing.name.toUpperCase()]);
+
+    expect(accounts[0]?.created).toBe(false);
+    expect(accounts[0]?.account_id).toBe(existing.account_id);
+    // The echo is what the caller asked for; `name` is what the org calls it.
+    expect(accounts[0]?.requested_name).toBe(existing.name.toUpperCase());
+    expect(accounts[0]?.name).toBe(existing.name);
+    expect(getMockAccountsList().total_count).toBe(before);
+  });
+
+  test("two spellings of one new customer: one account, but a row for each", () => {
+    resetAccountsMocks();
+    const before = getMockAccountsList().total_count;
+
+    const { accounts } = mockEnsureAccounts(["Nilgiri Roasters", "  nilgiri   roasters  "]);
+
+    // One account — but the caller maps its drafts by the name it sent, so a
+    // spelling that got no row back would fail the whole batch.
+    expect(getMockAccountsList().total_count).toBe(before + 1);
+    expect(accounts).toHaveLength(2);
+    expect(accounts.map((a) => a.requested_name)).toEqual([
+      "Nilgiri Roasters",
+      "nilgiri   roasters",
+    ]);
+    expect(new Set(accounts.map((a) => a.account_id)).size).toBe(1);
+    // Both rows report the id as created, as the RPC does; the caller counts
+    // distinct ids rather than rows.
+    expect(accounts.every((a) => a.created)).toBe(true);
+  });
+
+  test("the same spelling twice is answered once", () => {
+    resetAccountsMocks();
+
+    const { accounts } = mockEnsureAccounts(["Nilgiri Roasters", "Nilgiri Roasters"]);
+
+    expect(accounts).toHaveLength(1);
+  });
+
+  test("skips blank names rather than creating an unnamed account", () => {
+    resetAccountsMocks();
+    const before = getMockAccountsList().total_count;
+
+    const { accounts } = mockEnsureAccounts(["   ", ""]);
+
+    expect(accounts).toHaveLength(0);
+    expect(getMockAccountsList().total_count).toBe(before);
+  });
+});

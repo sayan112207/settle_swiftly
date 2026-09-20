@@ -209,7 +209,7 @@ export const longAccountNameChaseQueueFixture: ChaseQueue = {
 };
 
 /**
- * Spec §6 "Overflow": ₹4,20,00,000 must not wrap or clip inside its tile.
+ * Spec §6 "Overflow": ₹4,20,00,000.00 must not wrap or clip inside its tile.
  * Segments still sum to the total; the invariant does not get a holiday
  * because the number is large.
  */

@@ -16,25 +16,60 @@ import { AppSkeleton } from "@/components/app/AppSkeleton";
 import { PRODUCT_NAME } from "@/lib/brand";
 import { formatINR } from "@/lib/format";
 import { parseDelimitedInvoices, type ParsedInvoiceRow } from "@/lib/parsers/invoice-import";
-import { invoiceDraftSchema, type InvoiceDraftInput } from "@/lib/schemas/invoices";
-import { accountsQueryKeys, getAccounts } from "@/lib/services/accounts";
+import {
+  addEntriesSearchSchema,
+  invoiceDraftPendingAccountSchema,
+  invoiceDraftSchema,
+  type AddEntriesSearch,
+} from "@/lib/schemas/invoices";
+import { accountsQueryKeys, ensureAccounts, getAccounts } from "@/lib/services/accounts";
 import { importInvoices, invoicesQueryKeys } from "@/lib/services/invoices";
 
 export const Route = createFileRoute("/app/add-entries")({
+  validateSearch: addEntriesSearchSchema,
   head: () => ({ meta: [{ title: `Add entries — ${PRODUCT_NAME}` }] }),
   component: AddEntriesPage,
 });
 
-type Draft = InvoiceDraftInput & { id: string; source: "Manual" | "Import"; errors: string[] };
-type Mode = "manual" | "upload" | "paste";
+/**
+ * One invoice waiting to be saved.
+ *
+ * `account_id` is empty while the account does not exist yet — the import
+ * named a customer this org has never billed, or the manual form is adding one
+ * inline. Such a draft is not an error; it is resolved to a real id by
+ * `ensureAccounts` in the same click that saves the batch. `account_name` is
+ * what the row displays either way.
+ */
+type Draft = {
+  id: string;
+  source: "Manual" | "Import";
+  errors: string[];
+  account_id: string;
+  account_name: string;
+  invoice_number: string;
+  amount: string;
+  issue_date: string;
+  due_date: string;
+  external_ref?: string | undefined;
+};
+
+type Mode = AddEntriesSearch["mode"];
+
+/** The account select's value for "this customer isn't in the list yet". */
+const NEW_ACCOUNT = "__new__";
+
 const EMPTY_FORM = {
   account_id: "",
+  /** Only read when `account_id` is `NEW_ACCOUNT`. */
+  account_name: "",
   invoice_number: "",
   amount: "",
   issue_date: "",
   due_date: "",
   external_ref: "",
 };
+
+type FormState = typeof EMPTY_FORM;
 
 /**
  * Add Entries screen. Lets the user build up a batch of invoice drafts via
@@ -44,35 +79,76 @@ const EMPTY_FORM = {
 function AddEntriesPage() {
   const { orgs } = Route.useRouteContext();
   const orgId = orgs[0]!.id;
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [mode, setMode] = useState<Mode>("manual");
-  const [form, setForm] = useState(EMPTY_FORM);
+  const mode = search.mode;
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [paste, setPaste] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
-  const [successCount, setSuccessCount] = useState<number | null>(null);
+  const [saved, setSaved] = useState<{ invoices: number; accounts: number } | null>(null);
   const accountsQuery = useQuery({
     queryKey: accountsQueryKeys.list({ sort: "name", dir: "asc" }),
     queryFn: () => getAccounts({ sort: "name", dir: "asc" }),
     retry: false,
   });
   const accounts = accountsQuery.data?.items ?? [];
+
+  /** The mode lives in the URL, so "upload a file" can be linked to from the Accounts empty state. */
+  function setMode(value: Mode) {
+    void navigate({ search: { mode: value } });
+  }
+
   const saveMutation = useMutation({
-    mutationFn: () =>
-      importInvoices({
+    mutationFn: async (batch: Draft[]) => {
+      const resolved = await resolveAccounts(batch);
+
+      // Re-check duplicates now that every draft has a real account id.
+      //
+      // Two drafts can name one customer differently — "Sharma Traders"
+      // picked from the list and "Sharma Traders Pvt Ltd" typed into an
+      // import — and the pre-save check cannot see that, because it keys a
+      // pending draft on its name and a resolved one on its id. They only
+      // collide once both are ids. Left to the database this surfaces as a
+      // unique violation reading "an invoice with this number already
+      // exists", which points the user at their existing book rather than at
+      // the two rows in front of them.
+      const checked = resolved.drafts.map((draft, _, all) => ({
+        ...draft,
+        errors: validateDraft(
+          draft,
+          all.filter((entry) => entry.id !== draft.id),
+        ),
+      }));
+      if (checked.some((draft) => draft.errors.length > 0)) {
+        return { kind: "duplicates" as const, drafts: checked };
+      }
+
+      const result = await importInvoices({
         data: {
           org_id: orgId,
-          invoices: drafts.map(({ id, source, errors, ...invoice }) => invoice),
+          invoices: checked.map(({ id, source, errors, account_name, ...invoice }) => invoice),
         },
-      }),
-    onSuccess: async (result) => {
+      });
+      return { kind: "saved" as const, result, accountsCreated: resolved.created };
+    },
+    onSuccess: async (outcome) => {
+      if (outcome.kind === "duplicates") {
+        setDrafts(outcome.drafts);
+        toast.error(
+          "Two entries are for the same account and invoice number. Fix the highlighted rows.",
+        );
+        return;
+      }
+      const { result, accountsCreated } = outcome;
       if (!result.ok) {
         toast.error(result.message);
         return;
       }
-      setSuccessCount(result.created);
+      setSaved({ invoices: result.created, accounts: accountsCreated });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: invoicesQueryKeys.list(orgId) }),
         queryClient.invalidateQueries({ queryKey: accountsQueryKeys.list() }),
@@ -80,19 +156,70 @@ function AddEntriesPage() {
     },
     onError: () => toast.error("Couldn't save these invoices. Please try again."),
   });
+
+  /**
+   * Creates the accounts this batch names but the org does not have yet, and
+   * fills their ids into the drafts.
+   *
+   * The server matches on its own normalized form, so a name this screen
+   * showed as new may come back as an existing account — which is the right
+   * answer, and why the created count comes from the response rather than from
+   * how many names were sent.
+   */
+  async function resolveAccounts(batch: Draft[]): Promise<{ drafts: Draft[]; created: number }> {
+    const names = [
+      ...new Set(
+        batch
+          .filter((draft) => draft.account_id === "")
+          .map((draft) => draft.account_name.trim())
+          .filter((name) => name !== ""),
+      ),
+    ];
+    if (names.length === 0) return { drafts: batch, created: 0 };
+
+    const { accounts: ensured } = await ensureAccounts(names);
+    const byRequested = new Map(ensured.map((account) => [account.requested_name, account]));
+    return {
+      drafts: batch.map((draft) => {
+        if (draft.account_id !== "") return draft;
+        const match = byRequested.get(draft.account_name.trim());
+        // Every name sent comes back. A miss means the request and the
+        // response disagree about this batch, and saving the rest would leave
+        // a half-imported book behind — better to fail the whole click.
+        if (!match) throw new Error(`No account came back for "${draft.account_name}".`);
+        return { ...draft, account_id: match.account_id, account_name: match.name };
+      }),
+      // Distinct ids: two spellings of one new customer are one account.
+      created: new Set(ensured.filter((a) => a.created).map((a) => a.account_id)).size,
+    };
+  }
+
   /** Appends a single validated draft (manual entry) to the draft list and clears any prior success state. */
-  function addDraft(input: InvoiceDraftInput & { source: Draft["source"] }) {
+  function addDraft(input: Omit<Draft, "id" | "errors">) {
     const errors = validateDraft(input, drafts);
     setDrafts((current) => [...current, { ...input, id: crypto.randomUUID(), errors }]);
-    setSuccessCount(null);
+    setSaved(null);
   }
+
   /**
    * Handles the manual entry form submit: updates the draft in place when
    * `editingId` is set, otherwise appends a new draft, then resets the form.
    */
   function addManual(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const input = { ...form, source: "Manual" as const };
+    const creating = form.account_id === NEW_ACCOUNT;
+    const input = {
+      account_id: creating ? "" : form.account_id,
+      account_name: creating
+        ? form.account_name.trim()
+        : (accounts.find((a) => a.account_id === form.account_id)?.name ?? ""),
+      invoice_number: form.invoice_number,
+      amount: form.amount,
+      issue_date: form.issue_date,
+      due_date: form.due_date,
+      external_ref: form.external_ref,
+      source: "Manual" as const,
+    };
     if (editingId) {
       setDrafts((current) => {
         const updated = current.map((draft) =>
@@ -110,11 +237,14 @@ function AddEntriesPage() {
     } else addDraft(input);
     setForm(EMPTY_FORM);
   }
+
   /**
-   * Appends parsed CSV/paste rows as new import drafts, resolving each
-   * row's account name against the org's loaded accounts and validating
-   * each resulting draft. Rejects the batch if it would exceed the 500-row
-   * limit.
+   * Appends parsed CSV/paste rows as new import drafts and validates each one.
+   *
+   * The account-name match here is a preview, not a decision: a row that finds
+   * no match is marked as a new account rather than rejected, and the server
+   * has the final say on which names are new when the batch is saved. Rejects
+   * the batch if it would exceed the 500-row limit.
    */
   function addParsedRows(rows: ParsedInvoiceRow[]) {
     if (drafts.length + rows.length > 500) {
@@ -128,16 +258,22 @@ function AddEntriesPage() {
       ...current,
       ...rows.map((row) => {
         const input = {
-          ...row,
+          invoice_number: row.invoice_number,
+          amount: row.amount,
+          issue_date: row.issue_date,
+          due_date: row.due_date,
+          external_ref: row.external_ref,
           account_id: names.get(normalizeAccount(row.account)) ?? "",
+          account_name: row.account.trim(),
           source: "Import" as const,
         };
         return { ...input, id: crypto.randomUUID(), errors: validateDraft(input, current) };
       }),
     ]);
     setParseError(null);
-    setSuccessCount(null);
+    setSaved(null);
   }
+
   /** Parses raw CSV/paste text with the given delimiter and adds the resulting rows as drafts, surfacing any parse error. */
   function parseInput(value: string, delimiter: "," | "\t") {
     try {
@@ -146,6 +282,7 @@ function AddEntriesPage() {
       setParseError(error instanceof Error ? error.message : "The file couldn't be parsed.");
     }
   }
+
   /**
    * Handles the CSV file input's change event: validates the file extension
    * and size, then reads and parses its contents.
@@ -169,6 +306,7 @@ function AddEntriesPage() {
       () => setParseError("The file couldn't be read. Try another CSV file."),
     );
   }
+
   /**
    * Re-validates every draft against the others, blocks saving if any draft
    * has errors, and otherwise submits the whole batch via `saveMutation`.
@@ -186,19 +324,28 @@ function AddEntriesPage() {
       toast.error("Fix the highlighted entries before saving.");
       return;
     }
-    saveMutation.mutate();
+    saveMutation.mutate(next);
   }
-  if (successCount !== null)
+
+  if (saved !== null)
     return (
       <SuccessState
-        count={successCount}
+        invoices={saved.invoices}
+        accounts={saved.accounts}
         onMore={() => {
           setDrafts([]);
-          setSuccessCount(null);
+          setSaved(null);
           setMode("manual");
         }}
       />
     );
+
+  const newAccounts = new Set(
+    drafts
+      .filter((draft) => draft.account_id === "")
+      .map((draft) => normalizeAccount(draft.account_name)),
+  ).size;
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <header>
@@ -271,10 +418,11 @@ function AddEntriesPage() {
       {drafts.length > 0 ? (
         <DraftReview
           drafts={drafts}
-          accountNames={new Map(accounts.map((a) => [a.account_id, a.name]))}
+          newAccounts={newAccounts}
           onEdit={(draft) => {
             setForm({
-              account_id: draft.account_id,
+              account_id: draft.account_id === "" ? NEW_ACCOUNT : draft.account_id,
+              account_name: draft.account_name,
               invoice_number: draft.invoice_number,
               amount: draft.amount,
               issue_date: draft.issue_date,
@@ -308,7 +456,14 @@ function AddEntriesPage() {
   );
 }
 
-/** Manual invoice entry form: account picker plus invoice fields, used for both adding a new draft and updating one being edited. */
+/**
+ * Manual invoice entry form: account picker plus invoice fields, used for both
+ * adding a new draft and updating one being edited.
+ *
+ * The picker can create an account, because otherwise a workspace with no
+ * accounts yet has no way to add its first invoice — the select would offer
+ * nothing but its own placeholder.
+ */
 function ManualForm({
   form,
   setForm,
@@ -316,14 +471,14 @@ function ManualForm({
   onSubmit,
   editing,
 }: {
-  form: typeof EMPTY_FORM;
-  setForm: (value: typeof EMPTY_FORM) => void;
+  form: FormState;
+  setForm: (value: FormState) => void;
   accounts: { account_id: string; name: string }[];
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   editing: boolean;
 }) {
-  const update = (key: keyof typeof EMPTY_FORM, value: string) =>
-    setForm({ ...form, [key]: value });
+  const update = (key: keyof FormState, value: string) => setForm({ ...form, [key]: value });
+  const creating = form.account_id === NEW_ACCOUNT;
   return (
     <form onSubmit={onSubmit} className="rounded-card border border-hairline bg-card p-6">
       <div className="grid gap-4 md:grid-cols-2">
@@ -334,14 +489,29 @@ function ManualForm({
             onChange={(e) => update("account_id", e.target.value)}
             className="field"
           >
-            <option value="">Choose an account</option>
+            <option value="">
+              {accounts.length === 0 ? "No accounts yet" : "Choose an account"}
+            </option>
             {accounts.map((account) => (
               <option key={account.account_id} value={account.account_id}>
                 {account.name}
               </option>
             ))}
+            <option value={NEW_ACCOUNT}>+ New account</option>
           </select>
         </Field>
+        {creating ? (
+          <Field label="New account name">
+            <input
+              required
+              autoFocus
+              value={form.account_name}
+              onChange={(e) => update("account_name", e.target.value)}
+              placeholder="Sharma Traders Pvt Ltd"
+              className="field"
+            />
+          </Field>
+        ) : null}
         <Field label="Invoice #">
           <input
             required
@@ -394,8 +564,11 @@ function ManualForm({
           />
         </Field>
       </div>
-      <div className="mt-6 flex justify-end">
-        <AppButton>
+      <div className="mt-6 flex items-center justify-between gap-4">
+        <p className="text-prose text-fg-soft">
+          {creating ? "The account is created when you save this batch." : " "}
+        </p>
+        <AppButton type="submit">
           {editing ? (
             <Pencil className="size-4" aria-hidden="true" />
           ) : (
@@ -407,6 +580,7 @@ function ManualForm({
     </form>
   );
 }
+
 /** Drop-zone-style panel for choosing a CSV file to import, with the current size/row-count limits shown. */
 function UploadPanel({
   inputRef,
@@ -421,6 +595,7 @@ function UploadPanel({
       <h2 className="mt-3 text-section font-bold text-fg">Upload a CSV</h2>
       <p className="mt-1 text-prose text-fg-soft">
         Up to 500 rows or 5 MB. Include account, invoice number, amount, invoice date, and due date.
+        Customers you haven't billed before are added as you save.
       </p>
       <input
         ref={inputRef}
@@ -435,6 +610,7 @@ function UploadPanel({
     </section>
   );
 }
+
 /** Textarea for pasting tab-separated spreadsheet rows, with a button to preview them as drafts. */
 function PastePanel({
   value,
@@ -468,6 +644,7 @@ function PastePanel({
     </section>
   );
 }
+
 /**
  * Table of the current draft batch, with per-row edit/delete actions and
  * inline validation errors. The Save button is disabled while any draft has
@@ -475,14 +652,14 @@ function PastePanel({
  */
 function DraftReview({
   drafts,
-  accountNames,
+  newAccounts,
   onEdit,
   onDelete,
   onSave,
   saving,
 }: {
   drafts: Draft[];
-  accountNames: Map<string, string>;
+  newAccounts: number;
   onEdit: (draft: Draft) => void;
   onDelete: (id: string) => void;
   onSave: () => void;
@@ -497,6 +674,9 @@ function DraftReview({
           <p className="text-prose text-fg-soft">
             {drafts.length} draft {drafts.length === 1 ? "invoice" : "invoices"}
             {invalid ? ` · ${invalid} need attention` : " · ready to save"}
+            {newAccounts
+              ? ` · ${newAccounts} new ${newAccounts === 1 ? "account" : "accounts"}`
+              : ""}
           </p>
         </div>
         <AppButton loading={saving} disabled={invalid > 0} onClick={onSave}>
@@ -527,7 +707,14 @@ function DraftReview({
                 className={draft.errors.length ? "bg-danger-tint" : "hover:bg-hovered"}
               >
                 <td className="border-b border-hairline px-3 py-3 text-body font-semibold text-fg">
-                  {accountNames.get(draft.account_id) ?? "Unmatched account"}
+                  <span className="flex flex-wrap items-center gap-2">
+                    {draft.account_name || "No account"}
+                    {draft.account_id === "" && draft.account_name ? (
+                      <span className="inline-flex items-center rounded-pill bg-alt px-2.5 py-0.5 text-pill font-semibold text-fg-soft">
+                        New
+                      </span>
+                    ) : null}
+                  </span>
                 </td>
                 <td className="border-b border-hairline px-3 py-3 text-body text-fg">
                   {draft.invoice_number}
@@ -571,18 +758,30 @@ function DraftReview({
     </section>
   );
 }
+
 /** Confirmation screen shown after a successful save, with links to view the invoices list or add more entries. */
-function SuccessState({ count, onMore }: { count: number; onMore: () => void }) {
+function SuccessState({
+  invoices,
+  accounts,
+  onMore,
+}: {
+  invoices: number;
+  accounts: number;
+  onMore: () => void;
+}) {
   return (
     <div
       className="mx-auto max-w-xl rounded-card border border-accent-edge bg-card p-10 text-center"
       role="status"
     >
       <h1 className="text-title font-bold text-fg">
-        {count} {count === 1 ? "invoice" : "invoices"} added
+        {invoices} {invoices === 1 ? "invoice" : "invoices"} added
       </h1>
       <p className="mt-2 text-prose text-fg-soft">
         Your invoices were confirmed by the server and are ready to review.
+        {accounts
+          ? ` ${accounts} new ${accounts === 1 ? "account was" : "accounts were"} created along the way.`
+          : ""}
       </p>
       <div className="mt-6 flex justify-center gap-3">
         <Link
@@ -598,6 +797,7 @@ function SuccessState({ count, onMore }: { count: number; onMore: () => void }) 
     </div>
   );
 }
+
 /** Labeled form field wrapper, used by `ManualForm` for each input/select. */
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -607,32 +807,57 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
     </label>
   );
 }
+
 /** Lowercases, trims, and collapses whitespace in an account name so imported names can be matched against loaded accounts regardless of casing/spacing. */
 function normalizeAccount(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
-/** Builds the key used to detect duplicate drafts: the account id plus the invoice number normalized for whitespace, punctuation, and case. */
-function invoiceKey(input: Pick<InvoiceDraftInput, "account_id" | "invoice_number">) {
-  return `${input.account_id}:${input.invoice_number
+
+/**
+ * The key used to detect duplicate drafts: the account plus the invoice number
+ * normalized for whitespace, punctuation, and case.
+ *
+ * A draft whose account does not exist yet keys on its normalized name rather
+ * than an id. Two rows naming the same new customer with the same invoice
+ * number are still duplicates, and catching that before the save means the
+ * batch fails without having created accounts for it first.
+ *
+ * `null` when there is not enough to compare — an incomplete draft has its own
+ * errors and must not collide with every other incomplete one.
+ */
+function invoiceKey(
+  input: Pick<Draft, "account_id" | "account_name" | "invoice_number">,
+): string | null {
+  const account = input.account_id || normalizeAccount(input.account_name);
+  if (!account || !input.invoice_number.trim()) return null;
+  return `${account}:${input.invoice_number
     .trim()
     .replace(/\s+/g, " ")
     .replace(/^\W+|\W+$/g, "")
     .toUpperCase()}`;
 }
+
 /**
- * Validates a single draft against `invoiceDraftSchema` and checks it for a
- * duplicate invoice number against the other given drafts. Returns the
- * combined, deduplicated list of error messages (empty when the draft is
- * valid).
+ * Validates a single draft and checks it for a duplicate invoice number
+ * against the other given drafts. Returns the combined, deduplicated list of
+ * error messages (empty when the draft is valid).
+ *
+ * Which schema applies depends on whether the account exists yet: a draft
+ * still waiting for its account to be created has no id to validate, so it is
+ * held to `invoiceDraftPendingAccountSchema` — the same rules on every other
+ * field. Both end at `invoiceDraftSchema` before the batch is sent.
  */
 function validateDraft(
-  input: InvoiceDraftInput,
-  drafts: readonly Pick<Draft, "account_id" | "invoice_number">[],
+  input: Omit<Draft, "id" | "errors">,
+  drafts: readonly Pick<Draft, "account_id" | "account_name" | "invoice_number">[],
 ): string[] {
-  const parsed = invoiceDraftSchema.safeParse(input);
+  const parsed =
+    input.account_id === ""
+      ? invoiceDraftPendingAccountSchema.safeParse(input)
+      : invoiceDraftSchema.safeParse(input);
   const errors = parsed.success ? [] : parsed.error.issues.map((issue) => issue.message);
   const key = invoiceKey(input);
-  if (input.account_id && input.invoice_number && drafts.some((draft) => invoiceKey(draft) === key))
+  if (key !== null && drafts.some((draft) => invoiceKey(draft) === key))
     errors.push("Duplicate invoice number in this import.");
   return [...new Set(errors)];
 }

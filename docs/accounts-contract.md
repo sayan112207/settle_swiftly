@@ -190,6 +190,7 @@ The invoices response returns groups, not a flat list — the subtotal per bucke
 ### Mutations
 
 ```
+POST   /api/v1/accounts                      { names: [ … ] }
 POST   /api/v1/accounts/{id}/contacts
 PATCH  /api/v1/accounts/{id}/contacts/{contactId}
 DELETE /api/v1/accounts/{id}/contacts/{contactId}
@@ -199,9 +200,34 @@ POST   /api/v1/accounts/{id}/pause           { reason, until? }
 POST   /api/v1/accounts/{id}/resume
 ```
 
-Every mutation returns the **full updated resource**, not `204`. The frontend replaces its cached copy rather than guessing what changed, which is what keeps optimistic updates honest.
+`POST /api/v1/accounts` resolves a batch of names to accounts, creating the
+ones the org does not have yet, and answers with a row per requested name —
+`201` when at least one account was created, `200` when every name already
+matched one:
 
-Every mutation writes an `activity_log` row in the same transaction. An audit trail written separately is an audit trail that drifts.
+```json
+{
+  "accounts": [
+    {
+      "requested_name": "Sharma Traders Pvt Ltd",
+      "account_id": "…",
+      "name": "Sharma Traders",
+      "created": false
+    }
+  ]
+}
+```
+
+A name that matches an existing account is returned rather than refused — an
+import naming a known customer must land on that customer. Matching is on
+`app.normalize_account_name()`, so `name` is the account's own name and may
+differ from what was asked for; `requested_name` is the echo that lets a caller
+map the answer back. It is a batch because the importer's account column is,
+and it carries no `If-Match`: creating accounts touches no existing row.
+
+Every other mutation returns the **full updated resource**, not `204`. The frontend replaces its cached copy rather than guessing what changed, which is what keeps optimistic updates honest.
+
+Every mutation of an existing account writes an `activity_log` row in the same transaction. An audit trail written separately is an audit trail that drifts.
 
 ### Error codes the frontend handles specifically
 
@@ -216,7 +242,7 @@ Every mutation writes an `activity_log` row in the same transaction. An audit tr
 
 ### Concurrency
 
-Every mutation accepts `If-Match` carrying the resource's `updated_at`. A mismatch returns `stale_write`. Two people editing the same account's contact ladder is not hypothetical — collections is a shared workflow — and last-write-wins silently deletes somebody's contact.
+Every mutation **of an existing account** accepts `If-Match` carrying the resource's `updated_at`. Creating accounts is the exception — `POST /api/v1/accounts` has no prior resource to be stale against, and two people adding accounts at the same time is not a conflict; the unique index on the normalized name settles the one case where they collide. A mismatch returns `stale_write`. Two people editing the same account's contact ladder is not hypothetical — collections is a shared workflow — and last-write-wins silently deletes somebody's contact.
 
 ---
 

@@ -27,6 +27,7 @@ import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 import { Route as ApiV1ChasesRouteImport } from './routes/api/v1/chases'
 import { Route as AppAccountsIndexRouteImport } from './routes/app/accounts.index'
 import { Route as AppAccountsAccountIdRouteImport } from './routes/app/accounts.$accountId'
+import { Route as AppAccountsNewRouteImport } from './routes/app/accounts.new'
 import { Route as ApiV1AccountsIndexRouteImport } from './routes/api/v1/accounts/index'
 import { Route as ApiV1DashboardChaseQueueRouteImport } from './routes/api/v1/dashboard/chase-queue'
 import { Route as ApiV1DashboardSummaryRouteImport } from './routes/api/v1/dashboard/summary'
@@ -131,6 +132,11 @@ const AppAccountsIndexRoute = AppAccountsIndexRouteImport.update({
 const AppAccountsAccountIdRoute = AppAccountsAccountIdRouteImport.update({
   id: '/$accountId',
   path: '/$accountId',
+  getParentRoute: () => AppAccountsRoute,
+} as any)
+const AppAccountsNewRoute = AppAccountsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
   getParentRoute: () => AppAccountsRoute,
 } as any)
 const ApiV1AccountsIndexRoute = ApiV1AccountsIndexRouteImport.update({
@@ -240,6 +246,7 @@ export interface FileRoutesByFullPath {
   '/app/': typeof AppIndexRoute
   '/api/v1/chases': typeof ApiV1ChasesRoute
   '/app/accounts/$accountId': typeof AppAccountsAccountIdRoute
+  '/app/accounts/new': typeof AppAccountsNewRoute
   '/app/accounts/': typeof AppAccountsIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
@@ -273,6 +280,7 @@ export interface FileRoutesByTo {
   '/app': typeof AppIndexRoute
   '/api/v1/chases': typeof ApiV1ChasesRoute
   '/app/accounts/$accountId': typeof AppAccountsAccountIdRoute
+  '/app/accounts/new': typeof AppAccountsNewRoute
   '/app/accounts': typeof AppAccountsIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
@@ -309,6 +317,7 @@ export interface FileRoutesById {
   '/app/': typeof AppIndexRoute
   '/api/v1/chases': typeof ApiV1ChasesRoute
   '/app/accounts/$accountId': typeof AppAccountsAccountIdRoute
+  '/app/accounts/new': typeof AppAccountsNewRoute
   '/app/accounts/': typeof AppAccountsIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
@@ -346,6 +355,7 @@ export interface FileRouteTypes {
     | '/app/'
     | '/api/v1/chases'
     | '/app/accounts/$accountId'
+    | '/app/accounts/new'
     | '/app/accounts/'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
@@ -379,6 +389,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/api/v1/chases'
     | '/app/accounts/$accountId'
+    | '/app/accounts/new'
     | '/app/accounts'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
@@ -414,6 +425,7 @@ export interface FileRouteTypes {
     | '/app/'
     | '/api/v1/chases'
     | '/app/accounts/$accountId'
+    | '/app/accounts/new'
     | '/app/accounts/'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
@@ -585,6 +597,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountsAccountIdRouteImport
       parentRoute: typeof AppAccountsRoute
     }
+    '/app/accounts/new': {
+      id: '/app/accounts/new'
+      path: '/new'
+      fullPath: '/app/accounts/new'
+      preLoaderRoute: typeof AppAccountsNewRouteImport
+      parentRoute: typeof AppAccountsRoute
+    }
     '/api/v1/accounts/': {
       id: '/api/v1/accounts/'
       path: '/api/v1/accounts'
@@ -695,11 +714,13 @@ declare module '@tanstack/react-router' {
 
 interface AppAccountsRouteChildren {
   AppAccountsAccountIdRoute: typeof AppAccountsAccountIdRoute
+  AppAccountsNewRoute: typeof AppAccountsNewRoute
   AppAccountsIndexRoute: typeof AppAccountsIndexRoute
 }
 
 const AppAccountsRouteChildren: AppAccountsRouteChildren = {
   AppAccountsAccountIdRoute: AppAccountsAccountIdRoute,
+  AppAccountsNewRoute: AppAccountsNewRoute,
   AppAccountsIndexRoute: AppAccountsIndexRoute,
 }
 

@@ -520,6 +520,52 @@ export const archiveAccountBodySchema = z.object({
   confirm_name: z.string(),
 });
 
+/**
+ * One account name, as typed in the manual form or read out of an import's
+ * account column. 200 matches the `name` column and the invoice number's own
+ * cap; the trim is what the database stores, so validating the untrimmed
+ * string would let " " through.
+ */
+export const accountNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Enter the customer's name.")
+  .max(200, "That name is longer than 200 characters.");
+
+/**
+ * `POST /api/v1/accounts` — resolve names to accounts, creating the new ones.
+ *
+ * A batch because the import path is the reason this exists: a 500-row CSV can
+ * name hundreds of customers, and one request per name is not a design. The
+ * manual form sends a single name in the same shape.
+ */
+export const ensureAccountsBodySchema = z.object({
+  names: z.array(accountNameSchema).min(1).max(500),
+});
+
+/**
+ * What each requested name resolved to. `created` distinguishes a new account
+ * from a match on an existing one — the two need different copy, since a
+ * silent match on a name the user thought was new is a surprise worth naming.
+ */
+export const ensuredAccountSchema = z.object({
+  /**
+   * The name as the caller sent it. Present because `name` is the account's
+   * own name, which for a match is whatever the org already called this
+   * customer — "Sharma Traders" coming back for a requested "Sharma Traders
+   * Pvt Ltd". Without the echo a caller cannot tell which of its names this
+   * row answers.
+   */
+  requested_name: z.string().min(1),
+  account_id: z.string().uuid(),
+  name: z.string().min(1),
+  created: z.boolean(),
+});
+
+export const ensureAccountsResultSchema = z.object({
+  accounts: z.array(ensuredAccountSchema),
+});
+
 export const accountSettingsFormSchema = z
   .object({
     default_credit_days: z
@@ -608,6 +654,9 @@ export type UpdateContactBody = z.infer<typeof updateContactBodySchema>;
 export type UpdateEscalationBody = z.infer<typeof updateEscalationBodySchema>;
 export type UpdateChasingSettingsBody = z.infer<typeof updateChasingSettingsBodySchema>;
 export type ArchiveAccountBody = z.infer<typeof archiveAccountBodySchema>;
+export type EnsureAccountsBody = z.infer<typeof ensureAccountsBodySchema>;
+export type EnsuredAccount = z.infer<typeof ensuredAccountSchema>;
+export type EnsureAccountsResult = z.infer<typeof ensureAccountsResultSchema>;
 export type AccountSettingsFormValues = z.infer<typeof accountSettingsFormSchema>;
 export type PauseAccountBody = z.infer<typeof pauseAccountBodySchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;

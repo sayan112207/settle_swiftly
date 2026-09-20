@@ -17,6 +17,7 @@ import type {
   CadenceStep,
   CadenceTone,
   CreateContactBody,
+  EnsureAccountsResult,
   EscalationContact,
   PauseAccountBody,
   UpdateChasingSettingsBody,
@@ -646,7 +647,7 @@ export const sharmaContactsFixture: AccountContacts = {
   ],
 };
 
-/** Sharma Traders — five payments; ₹8,000 unapplied on the Statement receipt. */
+/** Sharma Traders — five payments; ₹8,000.00 unapplied on the Statement receipt. */
 export const sharmaPaymentsFixture: AccountPayments = {
   stats: {
     received_90d: "618000.00",
@@ -662,7 +663,7 @@ export const sharmaPaymentsFixture: AccountPayments = {
       amount: "108000.00",
       applied_to: "INV-1041",
       is_applied: true,
-      status_label: "TDS shortfall ₹10,000",
+      status_label: "TDS shortfall ₹10,000.00",
       status_tone: "warn",
       action_label: "Adjust",
       action_kind: "adjust",
@@ -767,7 +768,7 @@ export const sharmaActivityFixture: AccountActivity = {
       occurred_at: "2026-08-17T09:12:00+05:30",
       title: "Standard reminder sent to Rajat Mehta",
       title_tone: "neutral",
-      detail: "Invoice INV-1042 — ₹54,000. Delivered 09:13.",
+      detail: "Invoice INV-1042 — ₹54,000.00. Delivered 09:13.",
       link_label: null,
       link_href: null,
     },
@@ -778,7 +779,8 @@ export const sharmaActivityFixture: AccountActivity = {
       occurred_at: "2026-08-12T16:40:00+05:30",
       title: "Promised 22 Aug 2026",
       title_tone: "warn",
-      detail: "Rajat Mehta committed to ₹54,000 from the debtor page. Reminders paused until then.",
+      detail:
+        "Rajat Mehta committed to ₹54,000.00 from the debtor page. Reminders paused until then.",
       link_label: null,
       link_href: null,
     },
@@ -787,9 +789,9 @@ export const sharmaActivityFixture: AccountActivity = {
       kind: "payment_received",
       when_label: "08 Aug · 11:02",
       occurred_at: "2026-08-08T11:02:00+05:30",
-      title: "Payment received — ₹1,08,000",
+      title: "Payment received — ₹1,08,000.00",
       title_tone: "neutral",
-      detail: "Against INV-1041. ₹10,000 shortfall explained as 194J TDS.",
+      detail: "Against INV-1041. ₹10,000.00 shortfall explained as 194J TDS.",
       link_label: null,
       link_href: null,
     },
@@ -822,7 +824,7 @@ export const sharmaActivityFixture: AccountActivity = {
       occurred_at: "2026-07-28T10:44:00+05:30",
       title: "9 invoices imported from Tally",
       title_tone: "neutral",
-      detail: "₹4,82,000 total.",
+      detail: "₹4,82,000.00 total.",
       link_label: null,
       link_href: null,
     },
@@ -1571,3 +1573,83 @@ export function mockResumeAccount(accountId: string, ifMatch: string): AccountDe
 
 /** Kept for callers that only need the static seed timestamp. */
 export const ACCOUNTS_AS_OF = AS_OF;
+
+/**
+ * `POST /api/v1/accounts` against the fixture store.
+ *
+ * The normalization here is deliberately cruder than
+ * `app.normalize_account_name()` — it case-folds and collapses whitespace but
+ * does not strip "Pvt Ltd". Matching the database exactly would mean keeping a
+ * second copy of the domain's duplicate rule in TypeScript, which is the thing
+ * the RPC exists to avoid. The mock's job is to exercise the created/matched
+ * branches, not to be the authority on which two names are one debtor.
+ */
+export function mockEnsureAccounts(names: readonly string[]): EnsureAccountsResult {
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+  const existing = new Map(
+    [...mockStore.list.items, ...mockStore.archived].map((item) => [normalize(item.name), item]),
+  );
+
+  // Two different dedup keys, mirroring the RPC:
+  //   answered — the exact trimmed name, because the response carries a row
+  //              per *requested* spelling. The caller maps its drafts by the
+  //              name it sent, so dropping a repeated spelling would leave one
+  //              of them unanswered.
+  //   existing — the normalized name, because that is what decides whether an
+  //              account has to be created.
+  const answered = new Set<string>();
+  const createdIds = new Set<string>();
+  const accounts: EnsureAccountsResult["accounts"] = [];
+
+  for (const raw of names) {
+    const name = raw.trim();
+    if (name === "" || answered.has(name)) continue;
+    answered.add(name);
+    const key = normalize(name);
+
+    const match = existing.get(key);
+    if (match) {
+      accounts.push({
+        requested_name: name,
+        account_id: match.account_id,
+        name: match.name,
+        // True when this same call created it a moment ago under another
+        // spelling — the RPC reports the id it inserted, not the spelling.
+        created: createdIds.has(match.account_id),
+      });
+      continue;
+    }
+
+    // A brand-new account has no invoices and no contacts, so it cannot be
+    // chased yet — `no_p0`, not `active`.
+    const item: AccountListItem = {
+      account_id: crypto.randomUUID(),
+      name,
+      outstanding: "0.00",
+      overdue: "0.00",
+      open_count: 0,
+      oldest_overdue_days: null,
+      avg_days_late: null,
+      contacts: { p0: "missing", p1: "missing", p2: "missing" },
+      chase_status: "no_p0",
+      status_label: "Can't chase",
+    };
+    mockStore.list.items.push(item);
+    mockStore.list.total_count += 1;
+    mockStore.list.filtered_count = mockStore.list.items.length;
+    // Incremented, not recounted. The fixture is an org of 47 accounts
+    // showing 12 of them, so assigning items.length here would quietly
+    // collapse the org total to the size of the visible page.
+    mockStore.list.org_totals.account_count += 1;
+    existing.set(key, item);
+    createdIds.add(item.account_id);
+    accounts.push({
+      requested_name: name,
+      account_id: item.account_id,
+      name: item.name,
+      created: true,
+    });
+  }
+
+  return { accounts };
+}
