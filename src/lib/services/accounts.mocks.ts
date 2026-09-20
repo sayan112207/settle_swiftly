@@ -1024,9 +1024,48 @@ export function getMockAccountDetail(accountId: string): AccountDetail | undefin
   return synthesizeDetailFromListItem(listItem);
 }
 
+/** The account's chase status as the store currently holds it. */
+function currentChaseStatus(accountId: string): ChaseStatus | null {
+  const row = [...mockStore.list.items, ...mockStore.archived].find(
+    (item) => item.account_id === accountId,
+  );
+  return row?.chase_status ?? mockStore.details[accountId]?.chase_status ?? null;
+}
+
+/**
+ * Applies the account-level chase reason over each invoice's own.
+ *
+ * Derived on read rather than written into the store, which is what the real
+ * API does and the only way the two reasons can both survive: an account-level
+ * reason wins while it applies, and the invoice's own ("Disputed", "Promised")
+ * is still there underneath when the account becomes chaseable again. Writing
+ * the account reason into the rows would overwrite that fact and lose it.
+ */
+function withAccountChaseReasons(accountId: string, invoices: AccountInvoices): AccountInvoices {
+  const status = currentChaseStatus(accountId);
+  if (status === null) return invoices;
+  const accountReason = accountChaseDisabledReason(status, mockStore.contacts[accountId]);
+
+  return {
+    ...invoices,
+    groups: invoices.groups.map((group) => ({
+      ...group,
+      invoices: group.invoices.map((invoice) => {
+        // A stored account-level reason is the fixture's snapshot of this same
+        // derivation, not something the invoice owns.
+        const own = isAccountLevelChaseReason(invoice.chase_disabled_reason)
+          ? null
+          : invoice.chase_disabled_reason;
+        return { ...invoice, chase_disabled_reason: accountReason ?? own };
+      }),
+    })),
+  };
+}
+
+/** The stored invoice groups, with the account-level chase reason applied over each row. */
 export function getMockAccountInvoices(accountId: string): AccountInvoices | undefined {
   const invoices = mockStore.invoices[accountId];
-  if (invoices) return structuredClone(invoices);
+  if (invoices) return structuredClone(withAccountChaseReasons(accountId, invoices));
 
   // Account exists but has no invoice fixture yet — empty groups, not a 404.
   if (accountExists(accountId)) {
@@ -1209,10 +1248,13 @@ export class MockAccountsConflictError extends Error {
  * per-invoice one: while an account cannot be chased at all, that fact is the
  * answer for every invoice on it.
  */
-function accountChaseDisabledReason(status: ChaseStatus, ladder: AccountContacts): string | null {
+function accountChaseDisabledReason(
+  status: ChaseStatus,
+  ladder: AccountContacts | undefined,
+): string | null {
   if (status === "no_p0") return "Can't chase — no primary contact";
   if (status === "bounced_p0") {
-    const bounced = ladder.contacts.find(
+    const bounced = ladder?.contacts.find(
       (contact) =>
         contact.tier === "P0" && !contact.do_not_contact && contact.delivery_state === "bounced",
     );
@@ -1284,23 +1326,6 @@ function syncChaseStateFromLadder(accountId: string): void {
     detail.chase_status = status;
     detail.status_label = CHASE_STATUS_LABEL[status];
     detail.header_status = headerStatusFor({ chase_status: status });
-  }
-
-  // The invoice rows carry the reason too, and the real API recomputes it per
-  // read from this same status. Left alone, fixing a bouncing P0 would flip the
-  // header to Active while every invoice beneath it still read "Can't chase —
-  // Rajat Mehta's email is bouncing".
-  const invoices = mockStore.invoices[accountId];
-  if (!invoices) return;
-  const reason = accountChaseDisabledReason(status, ladder);
-  for (const group of invoices.groups) {
-    for (const invoice of group.invoices) {
-      if (reason !== null) {
-        invoice.chase_disabled_reason = reason;
-      } else if (isAccountLevelChaseReason(invoice.chase_disabled_reason)) {
-        invoice.chase_disabled_reason = null;
-      }
-    }
   }
 }
 
