@@ -83,7 +83,7 @@ Eight columns. Every column header is a real `<button>` inside its `<th scope="c
 | Coral Bay Creative          | ₹1,40,000.00 | ₹0.00        | 1    | —       | 8        | P0        | Paused          |
 | Pinnacle Industries LLP     | ₹1,25,000.00 | ₹62,000.00   | 1    | 9 days  | 14       | P0        | Active          |
 
-Visible totals: ₹36,37,000.00 outstanding, ₹19,94,000.00 overdue, 31 open invoices. The other 35 accounts carry ₹13,63,000,.00 ₹8,06,000,.00 and 32 invoices — three of them fully settled.
+Visible totals: ₹36,37,000.00 outstanding, ₹19,94,000.00 overdue, 31 open invoices. The other 35 accounts carry ₹13,63,000.00, ₹8,06,000.00, and 32 invoices — three of them fully settled.
 
 ### Contacts pips
 
@@ -293,7 +293,7 @@ Above the table, when non-zero: `₹12,000.00 unapplied credit` in `text-warn` w
 
 **Empty:** `No payments recorded from Sharma Traders yet.`
 
-For Sharma: two payments — 4 Aug 2026, ₹40,000,.00 Bank alert, allocated to INV-2231; and 22 Jul 2026, ₹60,000,.00 Manual, allocated to INV-2166 with ₹12,000.00 unapplied.
+For Sharma: two payments — 4 Aug 2026, ₹40,000.00, Bank alert, allocated to INV-2231; and 22 Jul 2026, ₹60,000.00, Manual, allocated to INV-2166 with ₹12,000.00 unapplied.
 
 ---
 

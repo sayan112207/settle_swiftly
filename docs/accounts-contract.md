@@ -226,7 +226,7 @@ and it carries no `If-Match`: creating accounts touches no existing row.
 
 Every other mutation returns the **full updated resource**, not `204`. The frontend replaces its cached copy rather than guessing what changed, which is what keeps optimistic updates honest.
 
-Every mutation writes an `activity_log` row in the same transaction. An audit trail written separately is an audit trail that drifts.
+Every mutation of an existing account writes an `activity_log` row in the same transaction. An audit trail written separately is an audit trail that drifts.
 
 ### Error codes the frontend handles specifically
 
@@ -241,7 +241,7 @@ Every mutation writes an `activity_log` row in the same transaction. An audit tr
 
 ### Concurrency
 
-Every mutation accepts `If-Match` carrying the resource's `updated_at`. A mismatch returns `stale_write`. Two people editing the same account's contact ladder is not hypothetical — collections is a shared workflow — and last-write-wins silently deletes somebody's contact.
+Every mutation **of an existing account** accepts `If-Match` carrying the resource's `updated_at`. Creating accounts is the exception — `POST /api/v1/accounts` has no prior resource to be stale against, and two people adding accounts at the same time is not a conflict; the unique index on the normalized name settles the one case where they collide. A mismatch returns `stale_write`. Two people editing the same account's contact ladder is not hypothetical — collections is a shared workflow — and last-write-wins silently deletes somebody's contact.
 
 ---
 
