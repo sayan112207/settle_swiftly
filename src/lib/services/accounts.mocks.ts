@@ -966,6 +966,15 @@ type MockStore = {
   details: Record<string, AccountDetail>;
   invoices: Record<string, AccountInvoices>;
   contacts: Record<string, AccountContacts>;
+  /**
+   * Accounts whose stored ladder is the whole truth.
+   *
+   * Most list rows carry contact pips but no ladder fixture, so the first read
+   * synthesizes an empty one. That empty ladder is not the account's contacts,
+   * and recomputing a summary from it would report Meridian — `p0: "present"`,
+   * Active — as having no primary contact the moment anyone adds a P1.
+   */
+  ladderComplete: Set<string>;
   payments: Record<string, AccountPayments>;
   activity: Record<string, AccountActivity>;
 };
@@ -987,6 +996,8 @@ function seedStore(): MockStore {
       [ACCOUNT_IDS.sharma]: structuredClone(sharmaContactsFixture),
       [ACCOUNT_IDS.kaveri]: structuredClone(kaveriContactsFixture),
     },
+    // The two ladder fixtures are complete by construction.
+    ladderComplete: new Set([ACCOUNT_IDS.sharma, ACCOUNT_IDS.kaveri]),
     payments: {
       [ACCOUNT_IDS.sharma]: structuredClone(sharmaPaymentsFixture),
     },
@@ -1024,12 +1035,19 @@ export function getMockAccountDetail(accountId: string): AccountDetail | undefin
   return synthesizeDetailFromListItem(listItem);
 }
 
-/** The account's chase status as the store currently holds it. */
+/**
+ * The account's chase status as the store currently holds it.
+ *
+ * Detail first, row second. Pausing writes `chase_status` onto the detail and
+ * never touches the list row, so reading the row first would report a paused
+ * account as whatever it was before the pause — and the invoice rows would
+ * never say chasing is paused.
+ */
 function currentChaseStatus(accountId: string): ChaseStatus | null {
   const row = [...mockStore.list.items, ...mockStore.archived].find(
     (item) => item.account_id === accountId,
   );
-  return row?.chase_status ?? mockStore.details[accountId]?.chase_status ?? null;
+  return mockStore.details[accountId]?.chase_status ?? row?.chase_status ?? null;
 }
 
 /**
@@ -1292,6 +1310,11 @@ function isAccountLevelChaseReason(reason: string | null): boolean {
 function syncChaseStateFromLadder(accountId: string): void {
   const ladder = mockStore.contacts[accountId];
   if (!ladder) return;
+  // Without the whole ladder the recomputed summary would be a downgrade
+  // dressed up as a recalculation: an account whose row says it has a P0 would
+  // lose it because the synthesized ladder never had one. Leave the fixture's
+  // summary as it stands until there is ladder data to justify changing it.
+  if (!mockStore.ladderComplete.has(accountId)) return;
 
   const pip = (tier: ContactTier): ContactPip => {
     const onTier = ladder.contacts.filter((contact) => contact.tier === tier);
@@ -1375,6 +1398,16 @@ export function mockCreateContact(
     }
     contacts = synthesized;
     mockStore.contacts[accountId] = contacts;
+    // An empty ladder is accurate only where the summary already said every
+    // tier was missing. Anywhere else the fixture knows about contacts this
+    // store has no rows for, and the ladder stays non-authoritative.
+    const row = [...mockStore.list.items, ...mockStore.archived].find(
+      (item) => item.account_id === accountId,
+    );
+    const pips = row?.contacts;
+    if (!pips || (pips.p0 === "missing" && pips.p1 === "missing" && pips.p2 === "missing")) {
+      mockStore.ladderComplete.add(accountId);
+    }
   }
   if (contacts.updated_at !== ifMatch) {
     throw new MockAccountsConflictError(
@@ -1812,6 +1845,8 @@ export function mockEnsureAccounts(names: readonly string[]): EnsureAccountsResu
       status_label: "Can't chase",
     };
     mockStore.list.items.push(item);
+    // Brand new: it has no contacts, and that is the truth rather than a gap.
+    mockStore.ladderComplete.add(item.account_id);
     mockStore.list.total_count += 1;
     mockStore.list.filtered_count = mockStore.list.items.length;
     // Incremented, not recounted. The fixture is an org of 47 accounts
