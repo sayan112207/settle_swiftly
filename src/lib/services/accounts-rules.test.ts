@@ -286,14 +286,14 @@ describe("payments", () => {
   test("settled, TDS shortfall on the pre-GST base, and a plain part payment", () => {
     expect(paymentStatus(118_000_00, 0, 10).label).toBe("Settled in full");
     const tds = paymentStatus(118_000_00, 10_000_00, 10);
-    expect([tds.label, tds.actionKind]).toEqual(["TDS shortfall ₹10,000", "adjust"]);
+    expect([tds.label, tds.actionKind]).toEqual(["TDS shortfall ₹10,000.00", "adjust"]);
     const part = paymentStatus(118_000_00, 25_000_00, 10);
     expect([part.label, part.actionKind]).toEqual([
-      "Part payment · ₹25,000 still due",
+      "Part payment · ₹25,000.00 still due",
       "view_split",
     ]);
     expect(paymentStatus(118_000_00, 10_000_00, null).label).toBe(
-      "Part payment · ₹10,000 still due",
+      "Part payment · ₹10,000.00 still due",
     );
   });
 });

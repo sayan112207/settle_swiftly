@@ -122,8 +122,10 @@ these tokens (`bg-surface`, `text-ink-muted`, `border-line`, `bg-brand`).
 - System font stack via `--font-sans`. Weights 400, 600, 650 only.
 - Section heading 40/650/-0.02em. Hero clamp(38px, 8vw, 68px)/650/-0.03em.
   Body 14-16/400. Label 11-12/700/uppercase/0.08em/`--ink-faint`. Metric 32/650.
-- Currency: `Intl.NumberFormat('en-IN')` for INR — lakh grouping (₹4,82,000),
-  not thousands. Never abbreviate in tables.
+- Currency: `Intl.NumberFormat('en-IN')` for INR — lakh grouping
+  (₹4,82,000.00), not thousands. Always two decimal places, whole amounts
+  included, so money columns stay aligned and paise are never rounded away.
+  Never abbreviate in tables.
 - Cards: 16-20px radius, 1px `--line` border, one soft shadow
   (`--shadow-card` / `--shadow-raised`). Pills and tabs are fully rounded.
 - Content max-width 1000-1280px depending on section, 32px horizontal padding.

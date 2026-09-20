@@ -1485,6 +1485,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      accounts_ensure: {
+        Args: { p_names: string[]; p_org: string }
+        Returns: {
+          account_id: string
+          account_name: string
+          requested_name: string
+          was_created: boolean
+        }[]
+      }
       create_org: {
         Args: { p_name: string }
         Returns: {
