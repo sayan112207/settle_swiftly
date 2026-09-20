@@ -1254,12 +1254,39 @@ function syncChaseStateFromLadder(accountId: string): void {
   }
 }
 
+/**
+ * Refuses a contact write on an archived account, as the RPCs do.
+ *
+ * Every contact mutation goes through `app.lock_account_for_write`, which
+ * raises `account_archived` before it looks at the If-Match token — an archived
+ * account is readable under Accounts → Archived but nothing may be written to
+ * it until it is restored. The mock had no such guard, so the fixture store
+ * would accept a contact the real backend refuses.
+ *
+ * Checked before the version token for the same reason the RPC does it in that
+ * order: being archived is the more useful answer, and a caller holding a stale
+ * token would otherwise be told to reload a page whose problem is not staleness.
+ */
+function refuseIfArchived(accountId: string): void {
+  const archived =
+    mockStore.archived.some((item) => item.account_id === accountId) ||
+    mockStore.details[accountId]?.settings.archived_at != null;
+  if (archived) {
+    throw new MockAccountsConflictError(
+      "account_archived",
+      "This account is archived. Restore it to make changes.",
+    );
+  }
+}
+
 /** `POST /api/v1/accounts/{id}/contacts` against the fixture store. */
 export function mockCreateContact(
   accountId: string,
   body: CreateContactBody,
   ifMatch: string,
 ): AccountContacts {
+  refuseIfArchived(accountId);
+
   // Materialize the same empty ladder the read synthesizes. Most accounts have
   // no stored contacts fixture — including every account created during the
   // session — and refusing those as `not_found` would mean the one account you
@@ -1314,6 +1341,8 @@ export function mockUpdateContact(
   body: UpdateContactBody,
   ifMatch: string,
 ): AccountContacts {
+  refuseIfArchived(accountId);
+
   const contacts = mockStore.contacts[accountId];
   if (!contacts) {
     throw new MockAccountsConflictError("not_found", "Account contacts not found.");
@@ -1364,6 +1393,8 @@ export function mockDeleteContact(
   contactId: string,
   ifMatch: string,
 ): AccountContacts {
+  refuseIfArchived(accountId);
+
   const contacts = mockStore.contacts[accountId];
   if (!contacts) {
     throw new MockAccountsConflictError("not_found", "Account contacts not found.");
