@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { AppButton } from "@/components/app/AppButton";
 import { AppSkeleton } from "@/components/app/AppSkeleton";
+import { ContactForm } from "@/components/app/ContactForm";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { formatCalendarDaysSince } from "@/lib/format";
 import {
+  useCreateAccountContact,
   useDeleteAccountContact,
   useUpdateAccountContact,
   useUpdateAccountEscalation,
@@ -21,16 +23,11 @@ import type {
   AccountContacts,
   ContactLanguage,
   ContactTier,
+  CreateContactBody,
   UpdateContactBody,
 } from "@/lib/schemas/accounts";
 import { AccountsApiError, accountsQueryKeys, getAccountContacts } from "@/lib/services/accounts";
 import { cn } from "@/lib/utils";
-
-/**
- * Controls whose flow does not exist yet are disabled rather than left live.
- * An enabled button that does nothing reads as a broken app, not a pending one.
- */
-const ADD_CONTACT_PENDING = "Adding and replacing contacts is not in this build yet.";
 
 const TIERS: {
   id: ContactTier;
@@ -79,6 +76,7 @@ export function AccountContactsPanel({ accountId, readOnly = false }: AccountCon
     retry: false,
   });
 
+  const createContact = useCreateAccountContact(accountId);
   const updateContact = useUpdateAccountContact(accountId);
   const deleteContact = useDeleteAccountContact(accountId);
   const updateEscalation = useUpdateAccountEscalation(accountId);
@@ -141,7 +139,11 @@ export function AccountContactsPanel({ accountId, readOnly = false }: AccountCon
   const data = contactsQuery.data;
   if (!data) return null;
 
-  const mutating = updateContact.isPending || deleteContact.isPending || updateEscalation.isPending;
+  const mutating =
+    createContact.isPending ||
+    updateContact.isPending ||
+    deleteContact.isPending ||
+    updateEscalation.isPending;
 
   return (
     <div className="flex flex-col gap-4">
@@ -166,6 +168,17 @@ export function AccountContactsPanel({ accountId, readOnly = false }: AccountCon
             deleteContact.mutate({ contactId, ifMatch: data.updated_at }, { onSettled: release }),
           );
         }}
+        onCreate={(body, done) => {
+          runExclusive((release) =>
+            createContact.mutate(
+              { body, ifMatch: data.updated_at },
+              {
+                onSuccess: () => done(),
+                onSettled: release,
+              },
+            ),
+          );
+        }}
         onSaveEscalation={(body) => {
           runExclusive((release) =>
             updateEscalation.mutate({ body, ifMatch: data.updated_at }, { onSettled: release }),
@@ -176,19 +189,30 @@ export function AccountContactsPanel({ accountId, readOnly = false }: AccountCon
   );
 }
 
+/**
+ * The three tier groups, each with its contacts and an add-contact form, plus
+ * the escalation timing beneath. One add-form is open at a time: two would
+ * both carry the same `If-Match` token, and the second to submit would be
+ * refused as a stale write.
+ */
 function ContactsLadder({
   data,
   busy,
   onUpdate,
   onDelete,
+  onCreate,
   onSaveEscalation,
 }: {
   data: AccountContacts;
   busy: boolean;
   onUpdate: (contactId: string, body: UpdateContactBody) => void;
   onDelete: (contactId: string) => void;
+  /** `done` closes the form; it runs only when the server accepted the contact. */
+  onCreate: (body: CreateContactBody, done: () => void) => void;
   onSaveEscalation: (body: { p1_after_days: number; p2_after_days: number }) => void;
 }) {
+  /** Which tier's add-form is open, if any. One at a time. */
+  const [addingTo, setAddingTo] = useState<ContactTier | null>(null);
   const [p1Days, setP1Days] = useState(data.p1_after_days);
   const [p2Days, setP2Days] = useState(data.p2_after_days);
   const p1Ref = useRef(p1Days);
@@ -236,7 +260,13 @@ function ContactsLadder({
                 <p className="mt-1 text-prose font-normal text-fg-muted">{tier.description}</p>
               </div>
 
-              {tier.id === "P0" && bouncedP0 ? <BounceWarningStrip contact={bouncedP0} /> : null}
+              {tier.id === "P0" && bouncedP0 ? (
+                <BounceWarningStrip
+                  contact={bouncedP0}
+                  busy={busy}
+                  onAdd={() => setAddingTo("P0")}
+                />
+              ) : null}
 
               {tier.id === "P0" && !hasUsableP0 ? (
                 <div className="rounded-card border border-danger-edge bg-danger-tint p-4">
@@ -244,7 +274,7 @@ function ContactsLadder({
                     No primary contact. This account can't be chased.
                   </p>
                   <div className="mt-3">
-                    <AppButton variant="primary" disabled title={ADD_CONTACT_PENDING}>
+                    <AppButton variant="primary" disabled={busy} onClick={() => setAddingTo("P0")}>
                       Add a contact
                     </AppButton>
                   </div>
@@ -263,9 +293,18 @@ function ContactsLadder({
                 ))}
               </div>
 
-              <AppButton variant="secondary" disabled title={ADD_CONTACT_PENDING}>
-                + Add contact
-              </AppButton>
+              {addingTo === tier.id ? (
+                <ContactForm
+                  tier={tier.id}
+                  busy={busy}
+                  onCancel={() => setAddingTo(null)}
+                  onSubmit={(body) => onCreate(body, () => setAddingTo(null))}
+                />
+              ) : (
+                <AppButton variant="secondary" disabled={busy} onClick={() => setAddingTo(tier.id)}>
+                  + Add contact
+                </AppButton>
+              )}
             </section>
           );
         })}
@@ -318,7 +357,19 @@ function ContactsLadder({
   );
 }
 
-function BounceWarningStrip({ contact }: { contact: AccountContact }) {
+/**
+ * Shown when the usable P0's email is bouncing — the account looks chaseable
+ * and is not, so the strip names who is failing and how long it has been.
+ */
+function BounceWarningStrip({
+  contact,
+  busy,
+  onAdd,
+}: {
+  contact: AccountContact;
+  busy: boolean;
+  onAdd: () => void;
+}) {
   const days = contact.last_bounced_at
     ? formatCalendarDaysSince(contact.last_bounced_at)
     : Number.NaN;
@@ -337,8 +388,11 @@ function BounceWarningStrip({ contact }: { contact: AccountContact }) {
         <span className="font-bold">{contact.name}'s email is bouncing.</span> Nothing has reached
         this account since {ago}.
       </p>
-      <AppButton variant="secondary" disabled title={ADD_CONTACT_PENDING}>
-        Replace contact
+      {/* "Replace" is two operations: add someone reachable, then retire the
+          bouncing one from its own card menu. This button does the first, and
+          says so — the old label promised a flow that does not exist. */}
+      <AppButton variant="secondary" disabled={busy} onClick={onAdd}>
+        Add a working contact
       </AppButton>
     </div>
   );
