@@ -55,7 +55,21 @@ function NewAccountPage() {
       const account = accounts[0];
       if (!account) throw new Error("The server did not return the account.");
 
-      if (!vars.contact) return { account, contactAdded: false, contactError: null };
+      if (!vars.contact) {
+        return { account, contactAdded: false, contactError: null, contactSkipped: false };
+      }
+
+      // Only onto an account this submit actually created.
+      //
+      // The name is matched on the database's normalized form, so "Acme
+      // Industries Pvt Ltd" lands on an existing "Acme Industries" — an
+      // account the user may not have realised was there. Several contacts may
+      // share a tier and escalation is cumulative, so appending a P0 would
+      // quietly add one more person receiving every reminder on somebody
+      // else's account. A name collision is not consent to edit that ladder.
+      if (!account.created) {
+        return { account, contactAdded: false, contactError: null, contactSkipped: true };
+      }
 
       // Two calls, and the account is already saved by the time the second
       // runs. A contact failure is therefore reported rather than thrown: the
@@ -71,11 +85,12 @@ function NewAccountPage() {
           toCreateBody(vars.contact),
           ladder.updated_at,
         );
-        return { account, contactAdded: true, contactError: null };
+        return { account, contactAdded: true, contactError: null, contactSkipped: false };
       } catch (cause) {
         return {
           account,
           contactAdded: false,
+          contactSkipped: false,
           contactError:
             cause instanceof AccountsApiError
               ? cause.message
@@ -83,11 +98,15 @@ function NewAccountPage() {
         };
       }
     },
-    onSuccess: async ({ account, contactAdded, contactError }) => {
+    onSuccess: async ({ account, contactAdded, contactError, contactSkipped }) => {
       await queryClient.invalidateQueries({ queryKey: accountsQueryKeys.list() });
       if (contactError) {
         // Land on Contacts regardless: that is where the half-finished job is.
         toast.error(`${account.name} was added, but the contact wasn't. ${contactError}`);
+      } else if (contactSkipped) {
+        toast.warning(
+          `${account.name} already exists, so the contact wasn't added to it. Add one here if you meant to.`,
+        );
       } else {
         toast.success(
           account.created
@@ -95,10 +114,16 @@ function NewAccountPage() {
             : `${account.name} already exists — opening it instead.`,
         );
       }
+      // A skipped contact opens the form on arrival: the user asked for a
+      // contact, and this is the one place they can decide to add it to the
+      // account that already existed.
       void navigate({
         to: "/app/accounts/$accountId",
         params: { accountId: account.account_id },
-        search: { tab: contactAdded || contactError ? "contacts" : "invoices" },
+        search: {
+          tab: contactAdded || contactError || contactSkipped ? "contacts" : "invoices",
+          ...(contactSkipped ? { add: contact.tier } : {}),
+        },
       });
     },
     onError: (cause) => {
