@@ -365,7 +365,14 @@ function ManualForm({
             required
             type="date"
             value={form.issue_date}
-            onChange={(e) => update("issue_date", e.target.value)}
+            onChange={(e) => {
+              const issue_date = e.target.value;
+              setForm({
+                ...form,
+                issue_date,
+                due_date: form.due_date && form.due_date < issue_date ? "" : form.due_date,
+              });
+            }}
             className="field"
           />
         </Field>
