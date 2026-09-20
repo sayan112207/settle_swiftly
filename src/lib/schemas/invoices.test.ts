@@ -48,6 +48,16 @@ describe("invoiceDraftSchema — due date ordering", () => {
     ).toBe(true);
   });
 
+  test("accepts due_date after issue_date", () => {
+    expect(
+      invoiceDraftSchema.safeParse({
+        ...VALID_DRAFT,
+        issue_date: "2026-08-01",
+        due_date: "2026-08-30",
+      }).success,
+    ).toBe(true);
+  });
+
   test("rejects due_date before issue_date", () => {
     const result = invoiceDraftSchema.safeParse({
       ...VALID_DRAFT,

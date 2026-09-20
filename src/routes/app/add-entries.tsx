@@ -373,6 +373,7 @@ function ManualForm({
           <input
             required
             type="date"
+            min={form.issue_date || undefined}
             value={form.due_date}
             onChange={(e) => update("due_date", e.target.value)}
             className="field"
