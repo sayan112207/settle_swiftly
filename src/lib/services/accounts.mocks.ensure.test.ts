@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  ACCOUNT_IDS,
   getMockAccountContacts,
+  getMockAccountInvoices,
   getMockAccountsList,
   mockCreateContact,
+  mockUpdateContact,
   mockEnsureAccounts,
   resetAccountsMocks,
 } from "@/lib/services/accounts.mocks";
@@ -167,5 +170,63 @@ describe("mockCreateContact", () => {
     const { id, ifMatch } = newAccount("Nilgiri Roasters");
     mockCreateContact(id, CONTACT, ifMatch);
     expect(getMockAccountContacts(id)?.contacts).toHaveLength(1);
+  });
+});
+
+describe("invoice chase reasons follow the ladder", () => {
+  /** Every reason on the account's invoices, deduplicated. */
+  function reasons(accountId: string) {
+    const invoices = getMockAccountInvoices(accountId);
+    return [
+      ...new Set(
+        (invoices?.groups ?? []).flatMap((group) =>
+          group.invoices.map((invoice) => invoice.chase_disabled_reason),
+        ),
+      ),
+    ];
+  }
+
+  test("fixing a bouncing P0 clears the reason from every invoice", () => {
+    resetAccountsMocks();
+    const id = ACCOUNT_IDS.sharma;
+    // Sharma ships bounced_p0: every invoice names the bouncing contact.
+    expect(reasons(id)).toEqual(["Can't chase — Rajat Mehta's email is bouncing"]);
+
+    const ladder = getMockAccountContacts(id)!;
+    mockCreateContact(
+      id,
+      { tier: "P0", name: "Reachable Replacement", email: "reachable@example.com" },
+      ladder.updated_at,
+    );
+
+    // The header says Active now, and the invoice rows must not still be
+    // telling the user the account can't be chased.
+    expect(reasons(id)).toEqual([null]);
+  });
+
+  test("silencing the replacement puts the bouncing reason back", () => {
+    resetAccountsMocks();
+    const id = ACCOUNT_IDS.sharma;
+
+    const before = getMockAccountContacts(id)!;
+    const added = mockCreateContact(
+      id,
+      { tier: "P0", name: "Reachable Replacement", email: "reachable@example.com" },
+      before.updated_at,
+    );
+    expect(reasons(id)).toEqual([null]);
+
+    // Mark the replacement do-not-contact. The original P0 is still there and
+    // still bouncing, so the account falls back to bounced_p0 rather than to
+    // "no primary contact" — the two need different fixes and say so.
+    const replacement = added.contacts.find((c) => c.name === "Reachable Replacement")!;
+    mockUpdateContact(
+      id,
+      replacement.contact_id,
+      { do_not_contact: true, dnc_reason: "Asked not to be chased" },
+      added.updated_at,
+    );
+
+    expect(reasons(id)).toEqual(["Can't chase — Rajat Mehta's email is bouncing"]);
   });
 });

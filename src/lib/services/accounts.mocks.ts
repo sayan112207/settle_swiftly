@@ -1205,6 +1205,39 @@ export class MockAccountsConflictError extends Error {
 }
 
 /**
+ * The account-wide chase reason, which `chaseDisabledReason` checks before any
+ * per-invoice one: while an account cannot be chased at all, that fact is the
+ * answer for every invoice on it.
+ */
+function accountChaseDisabledReason(status: ChaseStatus, ladder: AccountContacts): string | null {
+  if (status === "no_p0") return "Can't chase — no primary contact";
+  if (status === "bounced_p0") {
+    const bounced = ladder.contacts.find(
+      (contact) =>
+        contact.tier === "P0" && !contact.do_not_contact && contact.delivery_state === "bounced",
+    );
+    return bounced
+      ? `Can't chase — ${bounced.name}'s email is bouncing`
+      : "Can't chase — the primary contact's email is bouncing";
+  }
+  if (status === "paused") return "Chasing is paused for this account";
+  return null;
+}
+
+/**
+ * Whether a stored reason came from the account rather than the invoice.
+ *
+ * Only these may be cleared when an account becomes chaseable. "Disputed" and
+ * "Promised" are facts about one invoice and survive a contact being fixed.
+ */
+function isAccountLevelChaseReason(reason: string | null): boolean {
+  return (
+    reason !== null &&
+    (reason.startsWith("Can't chase — ") || reason === "Chasing is paused for this account")
+  );
+}
+
+/**
  * Recomputes an account's contact pips and chase status from its stored ladder.
  *
  * The real list derives both from the contacts on every read, so a mock that
@@ -1251,6 +1284,23 @@ function syncChaseStateFromLadder(accountId: string): void {
     detail.chase_status = status;
     detail.status_label = CHASE_STATUS_LABEL[status];
     detail.header_status = headerStatusFor({ chase_status: status });
+  }
+
+  // The invoice rows carry the reason too, and the real API recomputes it per
+  // read from this same status. Left alone, fixing a bouncing P0 would flip the
+  // header to Active while every invoice beneath it still read "Can't chase —
+  // Rajat Mehta's email is bouncing".
+  const invoices = mockStore.invoices[accountId];
+  if (!invoices) return;
+  const reason = accountChaseDisabledReason(status, ladder);
+  for (const group of invoices.groups) {
+    for (const invoice of group.invoices) {
+      if (reason !== null) {
+        invoice.chase_disabled_reason = reason;
+      } else if (isAccountLevelChaseReason(invoice.chase_disabled_reason)) {
+        invoice.chase_disabled_reason = null;
+      }
+    }
   }
 }
 
