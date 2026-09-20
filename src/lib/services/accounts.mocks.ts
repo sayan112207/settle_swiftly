@@ -1199,25 +1199,14 @@ export class MockAccountsConflictError extends Error {
   }
 }
 
-/** `POST /api/v1/accounts/{id}/contacts` against the fixture store. */
 export function mockCreateContact(
   accountId: string,
   body: CreateContactBody,
   ifMatch: string,
 ): AccountContacts {
-  // Materialize the same empty ladder the read synthesizes. Most accounts have
-  // no stored contacts fixture — including every account created during the
-  // session — and refusing those as `not_found` would mean the one account you
-  // just made is the one you cannot add a contact to, while the real RPC
-  // accepts it.
-  let contacts = mockStore.contacts[accountId];
+  const contacts = mockStore.contacts[accountId];
   if (!contacts) {
-    const synthesized = getMockAccountContacts(accountId);
-    if (!synthesized) {
-      throw new MockAccountsConflictError("not_found", "Account contacts not found.");
-    }
-    contacts = synthesized;
-    mockStore.contacts[accountId] = contacts;
+    throw new MockAccountsConflictError("not_found", "Account contacts not found.");
   }
   if (contacts.updated_at !== ifMatch) {
     throw new MockAccountsConflictError(
