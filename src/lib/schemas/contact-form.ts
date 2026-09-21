@@ -1,9 +1,14 @@
 import { z } from "zod";
 
 import {
+  blockedChannels,
   contactLanguageSchema,
   contactTierSchema,
+  CONTACT_CHANNELS,
+  updateContactBodySchema,
+  type AccountContact,
   type CreateContactBody,
+  type UpdateContactBody,
 } from "@/lib/schemas/accounts";
 
 /**
@@ -58,19 +63,14 @@ export const contactFormSchema = z
 
     // Channels have to match what you can actually send to. Email on with no
     // address, or WhatsApp/SMS on with no number, is a reminder queued against
-    // nothing.
-    if (value.channel_email && value.email === "") {
+    // nothing. Anchored on the missing detail rather than the switch, because
+    // filling the field in is the fix the form is asking for.
+    for (const { key, reason } of blockedChannels(value)) {
+      const spec = CONTACT_CHANNELS.find((c) => c.key === key);
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["email"],
-        message: "Email is on for this contact, so an address is needed.",
-      });
-    }
-    if ((value.channel_whatsapp || value.channel_sms) && value.phone === "") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["phone"],
-        message: "WhatsApp or SMS is on, so a phone number is needed.",
+        path: [spec?.detail ?? "email"],
+        message: reason,
       });
     }
   });
@@ -94,6 +94,28 @@ export const EMPTY_CONTACT: ContactFormValues = {
 };
 
 /**
+ * A saved contact as form values, for the card's Edit contact form.
+ *
+ * `do_not_contact` and `dnc_reason` are deliberately not round-tripped: they
+ * are not fields on this form, and the card owns them. Leaving them out of the
+ * PATCH is what keeps an edit from silently un-silencing somebody.
+ */
+export function fromContact(contact: AccountContact): ContactFormValues {
+  return {
+    tier: contact.tier,
+    name: contact.name,
+    designation: contact.designation ?? "",
+    email: contact.email ?? "",
+    phone: contact.phone ?? "",
+    channel_email: contact.channel_email,
+    channel_whatsapp: contact.channel_whatsapp,
+    channel_sms: contact.channel_sms,
+    always_cc: contact.always_cc,
+    language: contact.language,
+  };
+}
+
+/**
  * Form values to the wire body. Blank optional text becomes `null` rather than
  * `""` — the column is nullable, and an empty string would render as a contact
  * who has an email address that happens to be nothing.
@@ -112,6 +134,36 @@ export function toCreateBody(values: ContactFormValues): CreateContactBody {
     always_cc: values.always_cc,
     language: values.language,
   };
+}
+
+/**
+ * The fields the user actually changed, as a PATCH body.
+ *
+ * `opened` is the contact as the form was handed it, not as it stands now; a
+ * `CreateContactBody` is what the form submits, whichever mode it is in. A
+ * PATCH of every field would overwrite whatever somebody else changed while
+ * this form sat open — collections is a shared workflow, and the `If-Match`
+ * token is the account's whole ladder, so it cannot tell an edit of *this*
+ * contact from a channel toggled on another card. Sending only the fields this
+ * user touched is what makes that coarse token harmless: the two edits have to
+ * land on the same field to collide at all.
+ *
+ * `{}` when nothing changed — the caller closes the form rather than spending
+ * a write, and an activity row, on saying nothing.
+ */
+export function toUpdateBody(
+  opened: ContactFormValues,
+  edited: CreateContactBody,
+): UpdateContactBody {
+  const before = toCreateBody(opened);
+
+  // `unknown` values, then parsed: the schema is what decides this is a valid
+  // body, here as everywhere else, so nothing has to be cast into shape.
+  const changed: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(edited)) {
+    if (value !== before[key as keyof CreateContactBody]) changed[key] = value;
+  }
+  return updateContactBodySchema.parse(changed);
 }
 
 /** First message per field, so one bad field does not bury the others. */

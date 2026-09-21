@@ -185,13 +185,20 @@ export function ContactFields({
 }
 
 /**
- * Everything needed to add a contact, in one pass, as a standalone form.
+ * Everything needed to add or edit a contact, in one pass, as a standalone form.
  *
  * Used by the Contacts tab, where adding a contact is the whole interaction.
  * The new-account screen composes `ContactFields` into its own form instead.
+ *
+ * Editing passes `initial` and the same fields open filled in. The submitted
+ * body is the whole contact either way — `UpdateContactBody` is a partial of
+ * the create shape, so a PATCH of every field is just an ordinary PATCH, and
+ * the fields this form does not carry (`do_not_contact`, `dnc_reason`) stay
+ * untouched because they are absent rather than sent empty.
  */
 export function ContactForm({
   tier,
+  initial,
   busy = false,
   submitLabel = "Add contact",
   onSubmit,
@@ -199,12 +206,14 @@ export function ContactForm({
 }: {
   /** The tier group this form was opened from; still editable in the form. */
   tier: ContactTier;
+  /** The contact being edited, as form values. Absent when adding. */
+  initial?: ContactFormValues | undefined;
   busy?: boolean;
   submitLabel?: string;
   onSubmit: (body: CreateContactBody) => void;
   onCancel?: () => void;
 }) {
-  const [values, setValues] = useState<ContactFormValues>({ ...EMPTY_CONTACT, tier });
+  const [values, setValues] = useState<ContactFormValues>(initial ?? { ...EMPTY_CONTACT, tier });
   const [errors, setErrors] = useState<ContactFieldErrors>({});
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -221,7 +230,7 @@ export function ContactForm({
     <form
       onSubmit={submit}
       className="space-y-4 rounded-card border border-hairline bg-card p-5"
-      aria-label="Add a contact"
+      aria-label={initial ? `Edit ${initial.name}` : "Add a contact"}
     >
       <ContactFields
         values={values}

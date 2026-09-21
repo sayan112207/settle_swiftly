@@ -442,6 +442,79 @@ export function dncReasonIsPresent(value: {
   return !value.do_not_contact || (value.dnc_reason ?? "").trim().length > 0;
 }
 
+/**
+ * The three channels a reminder can go out on, and the contact detail each one
+ * sends to. WhatsApp and SMS both dial the phone number.
+ *
+ * THE list — the add form, the contact card's switches and the mock all read
+ * it, so a channel is never enabled against a detail that isn't there.
+ */
+export const CONTACT_CHANNELS = [
+  { key: "channel_email", label: "Email", detail: "email" },
+  { key: "channel_whatsapp", label: "WhatsApp", detail: "phone" },
+  { key: "channel_sms", label: "SMS", detail: "phone" },
+] as const satisfies readonly {
+  key: keyof ContactChannels;
+  label: string;
+  detail: "email" | "phone";
+}[];
+
+/** The channel flags every contact carries. */
+export type ContactChannels = {
+  channel_email: boolean;
+  channel_whatsapp: boolean;
+  channel_sms: boolean;
+};
+
+export type ContactChannelKey = (typeof CONTACT_CHANNELS)[number]["key"];
+
+/**
+ * What the channel rule reads, on a stored contact, a create body or a merged
+ * patch alike. Every field is optional: a PATCH carries only what changed, and
+ * the caller merges before asking.
+ */
+export type ContactChannelFacts = {
+  email?: string | null | undefined;
+  phone?: string | null | undefined;
+  channel_email?: boolean | undefined;
+  channel_whatsapp?: boolean | undefined;
+  channel_sms?: boolean | undefined;
+};
+
+/**
+ * Why `channel` cannot be on for this contact, or null when it can.
+ *
+ * A channel switched on with nothing to send to queues reminders against
+ * nothing: the account looks chased and never is. Mirrored by the
+ * `contacts_channel_reachable` check constraint, because the form is not the
+ * only writer.
+ */
+export function channelBlockedReason(
+  contact: ContactChannelFacts,
+  channel: ContactChannelKey,
+): string | null {
+  const spec = CONTACT_CHANNELS.find((c) => c.key === channel);
+  if (!spec) return null;
+  const detail = spec.detail === "email" ? contact.email : contact.phone;
+  if ((detail ?? "").trim() !== "") return null;
+  return spec.detail === "email"
+    ? `${spec.label} needs an address to send to.`
+    : `${spec.label} needs a phone number.`;
+}
+
+/** Every channel that is on but has nothing to send to, in `CONTACT_CHANNELS` order. */
+export function blockedChannels(
+  contact: ContactChannelFacts,
+): { key: ContactChannelKey; reason: string }[] {
+  const blocked: { key: ContactChannelKey; reason: string }[] = [];
+  for (const spec of CONTACT_CHANNELS) {
+    if (!contact[spec.key]) continue;
+    const reason = channelBlockedReason(contact, spec.key);
+    if (reason) blocked.push({ key: spec.key, reason });
+  }
+  return blocked;
+}
+
 export const createContactBodySchema = contactBodyShape.refine(dncReasonIsPresent, {
   message: "Add a reason before marking a contact do-not-contact.",
   path: ["dnc_reason"],
