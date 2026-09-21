@@ -1,8 +1,11 @@
 import { z } from "zod";
 
 import {
+  blockedChannels,
   contactLanguageSchema,
   contactTierSchema,
+  CONTACT_CHANNELS,
+  type AccountContact,
   type CreateContactBody,
 } from "@/lib/schemas/accounts";
 
@@ -58,19 +61,14 @@ export const contactFormSchema = z
 
     // Channels have to match what you can actually send to. Email on with no
     // address, or WhatsApp/SMS on with no number, is a reminder queued against
-    // nothing.
-    if (value.channel_email && value.email === "") {
+    // nothing. Anchored on the missing detail rather than the switch, because
+    // filling the field in is the fix the form is asking for.
+    for (const { key, reason } of blockedChannels(value)) {
+      const spec = CONTACT_CHANNELS.find((c) => c.key === key);
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["email"],
-        message: "Email is on for this contact, so an address is needed.",
-      });
-    }
-    if ((value.channel_whatsapp || value.channel_sms) && value.phone === "") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["phone"],
-        message: "WhatsApp or SMS is on, so a phone number is needed.",
+        path: [spec?.detail ?? "email"],
+        message: reason,
       });
     }
   });
@@ -92,6 +90,28 @@ export const EMPTY_CONTACT: ContactFormValues = {
   always_cc: false,
   language: "en",
 };
+
+/**
+ * A saved contact as form values, for the card's Edit contact form.
+ *
+ * `do_not_contact` and `dnc_reason` are deliberately not round-tripped: they
+ * are not fields on this form, and the card owns them. Leaving them out of the
+ * PATCH is what keeps an edit from silently un-silencing somebody.
+ */
+export function fromContact(contact: AccountContact): ContactFormValues {
+  return {
+    tier: contact.tier,
+    name: contact.name,
+    designation: contact.designation ?? "",
+    email: contact.email ?? "",
+    phone: contact.phone ?? "",
+    channel_email: contact.channel_email,
+    channel_whatsapp: contact.channel_whatsapp,
+    channel_sms: contact.channel_sms,
+    always_cc: contact.always_cc,
+    language: contact.language,
+  };
+}
 
 /**
  * Form values to the wire body. Blank optional text becomes `null` rather than

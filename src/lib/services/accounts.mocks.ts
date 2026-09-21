@@ -29,7 +29,8 @@ import type {
 } from "@/lib/schemas/accounts";
 import { updateChasingSettingsBodySchema } from "@/lib/schemas/accounts";
 import { CHASE_STATUS_LABEL } from "@/lib/services/accounts-rules";
-import { dncReasonIsPresent } from "@/lib/schemas/accounts";
+import { blockedChannels, dncReasonIsPresent } from "@/lib/schemas/accounts";
+import type { ContactChannelFacts } from "@/lib/schemas/accounts";
 
 /**
  * Fixture data for `VITE_USE_MOCKS=true`, figures from `docs/accounts-spec.md`.
@@ -1377,6 +1378,21 @@ function refuseIfArchived(accountId: string): void {
   }
 }
 
+/**
+ * Refuses a contact whose channels don't match what it can be reached on.
+ *
+ * Mirrors the `contacts_channel_reachable` check constraint: a channel on with
+ * no address or number behind it queues reminders against nothing, and the
+ * account reads as chased while nothing has gone out. The form checks this
+ * first; this is here because the form is not the only writer.
+ */
+function refuseUnreachableChannels(contact: ContactChannelFacts): void {
+  const blocked = blockedChannels(contact)[0];
+  if (blocked) {
+    throw new MockAccountsConflictError("channel_unreachable", blocked.reason);
+  }
+}
+
 /** `POST /api/v1/accounts/{id}/contacts` against the fixture store. */
 export function mockCreateContact(
   accountId: string,
@@ -1384,6 +1400,12 @@ export function mockCreateContact(
   ifMatch: string,
 ): AccountContacts {
   refuseIfArchived(accountId);
+  refuseUnreachableChannels({
+    ...body,
+    // The column defaults the create body leaves out, so the check sees the
+    // contact that would actually be stored.
+    channel_email: body.channel_email ?? true,
+  });
 
   // Materialize the same empty ladder the read synthesizes. Most accounts have
   // no stored contacts fixture — including every account created during the
@@ -1487,6 +1509,9 @@ export function mockUpdateContact(
       "Add a reason before marking a contact do-not-contact.",
     );
   }
+  // The merged state, not the patch: clearing a phone number and leaving
+  // WhatsApp on breaks the rule exactly as much as turning WhatsApp on does.
+  refuseUnreachableChannels(merged);
 
   Object.assign(contact, body, { updated_at: bumpUpdatedAt() });
   contacts.updated_at = contact.updated_at;

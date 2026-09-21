@@ -232,7 +232,11 @@ White, hairline border, `rounded-card`. Name and designation on line one, email 
 
 Channel toggles: `Email · WhatsApp · SMS`. Each is a `<button role="switch" aria-checked>` with an accessible name like `"Email for Rajat Mehta"`. On is `bg-accent-tint text-accent`; off is `bg-alt text-fg-soft`.
 
+A channel the contact has nothing to send to is **disabled, not refused on click** — WhatsApp and SMS on a contact with no phone number, Email on one with no address. The card carries the reason in a line under the toggles (`"WhatsApp and SMS need a phone number. Add one from Edit contact."`) as well as in the toggle's `title`, because a disabled control with no explanation is the dead click the conventions forbid. A channel that is already on stays switchable off whatever is missing: turning it off is the fix.
+
 Also per card: `Always CC` toggle, `Do not contact` toggle with a required reason when on, and a language selector (English, Hindi, Tamil, Telugu, Marathi, Gujarati, Bengali, Kannada).
+
+`Edit contact` in the `⋯` menu swaps the card for the add-contact form, filled in, with `Save changes`. It is the only way to change a name, designation, email or phone after creation, and it is how a missing phone number gets added — which is what the disabled WhatsApp and SMS toggles point at. One write form is open at a time across the whole tab, add included: they all submit with the same `If-Match` token, so a second open form would be refused as a stale write after the user had filled it in. `Do not contact` stays on the card, not in the form — silencing somebody is not part of correcting their phone number.
 
 `+ Add contact` secondary button at the foot of each tier group.
 
@@ -240,7 +244,7 @@ Also per card: `Always CC` toggle, `Do not contact` toggle with a required reaso
 
 The design says drag-to-reorder between tiers. **Drag alone is not acceptable**, and dnd-kit isn't installed.
 
-Build the keyboard-and-mouse path first: each card's `⋯` menu has `Move to P0 / P1 / P2`, and the card's tier is also a labelled select. That is the real mechanism and it is fully accessible. Drag is a later enhancement over the same state; if it never ships, nothing is lost.
+Build the keyboard-and-mouse path first: each card's `⋯` menu has `Edit contact`, `Move to P0 / P1 / P2` and `Remove contact`, and the card's tier is also a labelled select. That is the real mechanism and it is fully accessible. Drag is a later enhancement over the same state; if it never ships, nothing is lost.
 
 Do not install a drag library for this build. If you think you need one, stop and ask.
 

@@ -122,6 +122,7 @@ avg_days_late    = mean of (paid_on - due_date) over the last 12 months
 - Multiple contacts per tier allowed.
 - Changing a tier is a plain update to one row. It never reorders or demotes another contact.
 - **Removing or marking `do_not_contact` on the last usable P0 is rejected** with `409` and code `last_p0_required`. The account would silently become unchaseable otherwise.
+- **A channel may not be on without the detail it sends to**: `channel_email` needs an email address, `channel_whatsapp` and `channel_sms` need a phone number. Enforced by the `contacts_channel_reachable` check constraint, because `contacts_reachable` only asks for one of the two — an email-only contact still defaults to `channel_email = true` and can have WhatsApp switched on. A violation is a `422` with code `channel_unreachable`. Reminders queued against a number that does not exist make an account read as chased while nothing goes out.
 - Setting `delivery_state='bounced'` is a system action from the mail provider, never a user edit.
 
 ### 2.4 Pausing
@@ -231,12 +232,13 @@ Every mutation of an existing account writes an `activity_log` row in the same t
 
 ### Error codes the frontend handles specifically
 
-| Code                    | HTTP | Message                                                              |
-| ----------------------- | ---- | -------------------------------------------------------------------- |
-| `last_p0_required`      | 409  | An account needs a P0 contact to be chased. Add a replacement first. |
-| `escalation_order`      | 422  | P2 must come after P1.                                               |
-| `pause_reason_required` | 422  | Add a reason before pausing.                                         |
-| `stale_write`           | 409  | Someone else changed this account. Reload and try again.             |
+| Code                    | HTTP | Message                                                                      |
+| ----------------------- | ---- | ---------------------------------------------------------------------------- |
+| `last_p0_required`      | 409  | An account needs a P0 contact to be chased. Add a replacement first.         |
+| `escalation_order`      | 422  | P2 must come after P1.                                                       |
+| `pause_reason_required` | 422  | Add a reason before pausing.                                                 |
+| `stale_write`           | 409  | Someone else changed this account. Reload and try again.                     |
+| `channel_unreachable`   | 422  | Email needs an address to send to, and WhatsApp or SMS needs a phone number. |
 
 `message` is user-facing copy following the voice rules and is displayed verbatim.
 

@@ -61,13 +61,31 @@ describe("contactFormSchema", () => {
   });
 
   test("a channel switched on needs the address it sends to", () => {
+    // The message names the channel that is on, not the pair that could be:
+    // it is the same rule the contact card's disabled toggles state.
     const whatsappNoPhone = errorsAfterSubmit({
       ...EMPTY_CONTACT,
       name: "Rajat",
       email: "rajat@example.com",
       channel_whatsapp: true,
     });
-    expect(whatsappNoPhone.phone).toBe("WhatsApp or SMS is on, so a phone number is needed.");
+    expect(whatsappNoPhone.phone).toBe("WhatsApp needs a phone number.");
+
+    const smsNoPhone = errorsAfterSubmit({
+      ...EMPTY_CONTACT,
+      name: "Rajat",
+      email: "rajat@example.com",
+      channel_sms: true,
+    });
+    expect(smsNoPhone.phone).toBe("SMS needs a phone number.");
+
+    // Email is on by default, so a phone-only contact has to turn it off.
+    const emailNoAddress = errorsAfterSubmit({
+      ...EMPTY_CONTACT,
+      name: "Rajat",
+      phone: "+91 98765 43210",
+    });
+    expect(emailNoAddress.email).toBe("Email needs an address to send to.");
   });
 
   test("every channel off is refused", () => {

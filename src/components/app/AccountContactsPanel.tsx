@@ -18,14 +18,17 @@ import {
   useUpdateAccountContact,
   useUpdateAccountEscalation,
 } from "@/lib/queries/account-contacts";
-import type {
-  AccountContact,
-  AccountContacts,
-  ContactLanguage,
-  ContactTier,
-  CreateContactBody,
-  UpdateContactBody,
+import {
+  channelBlockedReason,
+  CONTACT_CHANNELS,
+  type AccountContact,
+  type AccountContacts,
+  type ContactLanguage,
+  type ContactTier,
+  type CreateContactBody,
+  type UpdateContactBody,
 } from "@/lib/schemas/accounts";
+import { fromContact } from "@/lib/schemas/contact-form";
 import { AccountsApiError, accountsQueryKeys, getAccountContacts } from "@/lib/services/accounts";
 import { cn } from "@/lib/utils";
 
@@ -166,11 +169,14 @@ export function AccountContactsPanel({
         busy={mutating || readOnly}
         openAddFor={readOnly ? undefined : openAddFor}
         onAddFormClosed={onAddFormClosed}
-        onUpdate={(contactId, body) => {
+        onUpdate={(contactId, body, done) => {
           runExclusive((release) =>
             updateContact.mutate(
               { contactId, body, ifMatch: data.updated_at },
-              { onSettled: release },
+              {
+                onSuccess: () => done?.(),
+                onSettled: release,
+              },
             ),
           );
         }}
@@ -220,7 +226,8 @@ function ContactsLadder({
   busy: boolean;
   openAddFor?: ContactTier | undefined;
   onAddFormClosed?: (() => void) | undefined;
-  onUpdate: (contactId: string, body: UpdateContactBody) => void;
+  /** `done` closes the edit form; like `onCreate`, only on a server-accepted write. */
+  onUpdate: (contactId: string, body: UpdateContactBody, done?: () => void) => void;
   onDelete: (contactId: string) => void;
   /** `done` closes the form; it runs only when the server accepted the contact. */
   onCreate: (body: CreateContactBody, done: () => void) => void;
@@ -229,10 +236,29 @@ function ContactsLadder({
   /** Which tier's add-form is open, if any. One at a time. */
   const [addingTo, setAddingTo] = useState<ContactTier | null>(openAddFor ?? null);
 
+  /**
+   * Which contact's card has been swapped for an edit form, if any.
+   *
+   * One write form open at a time, add included, for the reason the add forms
+   * are already exclusive: every form on this panel submits with the same
+   * `If-Match` token, and the second to submit would be refused as a stale
+   * write after the user had filled it in.
+   */
+  const [editing, setEditing] = useState<string | null>(null);
+
+  function openEditor(contactId: string) {
+    setAddingTo(null);
+    onAddFormClosed?.();
+    setEditing(contactId);
+  }
+
   // Arriving with `?add=` again — clicking the strip from another tab, or a
   // second link — must reopen the form even though the component stayed mounted.
   useEffect(() => {
-    if (openAddFor) setAddingTo(openAddFor);
+    if (openAddFor) {
+      setEditing(null);
+      setAddingTo(openAddFor);
+    }
   }, [openAddFor]);
 
   /** Closing always clears the search param, whoever opened the form. */
@@ -291,7 +317,10 @@ function ContactsLadder({
                 <BounceWarningStrip
                   contact={bouncedP0}
                   busy={busy}
-                  onAdd={() => setAddingTo("P0")}
+                  onAdd={() => {
+                    setEditing(null);
+                    setAddingTo("P0");
+                  }}
                 />
               ) : null}
 
@@ -301,7 +330,14 @@ function ContactsLadder({
                     No primary contact. This account can't be chased.
                   </p>
                   <div className="mt-3">
-                    <AppButton variant="primary" disabled={busy} onClick={() => setAddingTo("P0")}>
+                    <AppButton
+                      variant="primary"
+                      disabled={busy}
+                      onClick={() => {
+                        setEditing(null);
+                        setAddingTo("P0");
+                      }}
+                    >
                       Add a contact
                     </AppButton>
                   </div>
@@ -309,15 +345,30 @@ function ContactsLadder({
               ) : null}
 
               <div className="space-y-3">
-                {tierContacts.map((contact) => (
-                  <ContactCard
-                    key={contact.contact_id}
-                    contact={contact}
-                    busy={busy}
-                    onUpdate={onUpdate}
-                    onDelete={onDelete}
-                  />
-                ))}
+                {tierContacts.map((contact) =>
+                  editing === contact.contact_id ? (
+                    <ContactForm
+                      key={contact.contact_id}
+                      tier={contact.tier}
+                      initial={fromContact(contact)}
+                      busy={busy}
+                      submitLabel="Save changes"
+                      onCancel={() => setEditing(null)}
+                      onSubmit={(body) =>
+                        onUpdate(contact.contact_id, body, () => setEditing(null))
+                      }
+                    />
+                  ) : (
+                    <ContactCard
+                      key={contact.contact_id}
+                      contact={contact}
+                      busy={busy}
+                      onUpdate={onUpdate}
+                      onDelete={onDelete}
+                      onEdit={openEditor}
+                    />
+                  ),
+                )}
               </div>
 
               {addingTo === tier.id ? (
@@ -328,7 +379,14 @@ function ContactsLadder({
                   onSubmit={(body) => onCreate(body, closeAddForm)}
                 />
               ) : (
-                <AppButton variant="secondary" disabled={busy} onClick={() => setAddingTo(tier.id)}>
+                <AppButton
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setEditing(null);
+                    setAddingTo(tier.id);
+                  }}
+                >
                   + Add contact
                 </AppButton>
               )}
@@ -425,18 +483,27 @@ function BounceWarningStrip({
   );
 }
 
+/**
+ * One saved contact: who they are, which tier they sit on, and every per-contact
+ * switch. Editing their details is not inline here — the `⋯` menu swaps the
+ * whole card for the contact form, so a name, an address and a phone number are
+ * corrected in one submit rather than field by field.
+ */
 function ContactCard({
   contact,
   busy,
   onUpdate,
   onDelete,
+  onEdit,
 }: {
   contact: AccountContact;
   busy: boolean;
   onUpdate: (contactId: string, body: UpdateContactBody) => void;
   onDelete: (contactId: string) => void;
+  onEdit: (contactId: string) => void;
 }) {
   const [dncReason, setDncReason] = useState(contact.dnc_reason ?? "");
+  const missingDetail = missingChannelDetail(contact);
 
   return (
     <article className="rounded-card border border-hairline bg-card p-4">
@@ -487,6 +554,13 @@ function ContactCard({
               align="end"
               className="rounded-card border-hairline bg-card shadow-overlay"
             >
+              <DropdownMenuItem
+                disabled={busy}
+                className="cursor-pointer text-body font-semibold focus:bg-hovered"
+                onSelect={() => onEdit(contact.contact_id)}
+              >
+                Edit contact
+              </DropdownMenuItem>
               {(["P0", "P1", "P2"] as const).map((tier) => (
                 <DropdownMenuItem
                   key={tier}
@@ -510,27 +584,20 @@ function ContactCard({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <ChannelSwitch
-          label="Email"
-          name={contact.name}
-          busy={busy}
-          checked={contact.channel_email}
-          onCheckedChange={(checked) => onUpdate(contact.contact_id, { channel_email: checked })}
-        />
-        <ChannelSwitch
-          label="WhatsApp"
-          name={contact.name}
-          busy={busy}
-          checked={contact.channel_whatsapp}
-          onCheckedChange={(checked) => onUpdate(contact.contact_id, { channel_whatsapp: checked })}
-        />
-        <ChannelSwitch
-          label="SMS"
-          name={contact.name}
-          busy={busy}
-          checked={contact.channel_sms}
-          onCheckedChange={(checked) => onUpdate(contact.contact_id, { channel_sms: checked })}
-        />
+        {CONTACT_CHANNELS.map((channel) => (
+          <ChannelSwitch
+            key={channel.key}
+            label={channel.label}
+            name={contact.name}
+            busy={busy}
+            checked={contact[channel.key]}
+            // A channel already on stays switchable off whatever the contact is
+            // missing — turning it off is the fix, so it can never be the thing
+            // that is blocked.
+            blockedReason={contact[channel.key] ? null : channelBlockedReason(contact, channel.key)}
+            onCheckedChange={(checked) => onUpdate(contact.contact_id, { [channel.key]: checked })}
+          />
+        ))}
         <ChannelSwitch
           label="Always CC"
           name={contact.name}
@@ -551,6 +618,12 @@ function ContactCard({
           }
         />
       </div>
+
+      {missingDetail ? (
+        <p className="mt-2 text-prose font-normal text-fg-muted">
+          {missingDetail} Add one from <span className="font-semibold">Edit contact</span>.
+        </p>
+      ) : null}
 
       {contact.do_not_contact ? (
         <label className="mt-3 block text-prose font-semibold text-fg-muted">
@@ -594,30 +667,80 @@ function ContactCard({
   );
 }
 
+/**
+ * Why this contact's off channels can't be switched on, as one sentence, or
+ * null when nothing is missing.
+ *
+ * `contacts_reachable` guarantees an email or a phone, so in practice only one
+ * of the two can be absent — but both are composed here rather than assumed,
+ * because this renders whatever the server sent.
+ */
+function missingChannelDetail(contact: AccountContact): string | null {
+  const needs = (detail: "email" | "phone") =>
+    CONTACT_CHANNELS.filter(
+      (channel) =>
+        channel.detail === detail &&
+        !contact[channel.key] &&
+        channelBlockedReason(contact, channel.key),
+    ).map((channel) => channel.label);
+
+  const parts: string[] = [];
+  const needsEmail = needs("email");
+  const needsPhone = needs("phone");
+  if (needsEmail.length > 0) parts.push(`${listOf(needsEmail)} needs an address to send to.`);
+  if (needsPhone.length > 0) {
+    parts.push(`${listOf(needsPhone)} ${needsPhone.length > 1 ? "need" : "needs"} a phone number.`);
+  }
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
+/** `["WhatsApp", "SMS"]` → `"WhatsApp and SMS"`. */
+function listOf(labels: string[]): string {
+  return labels.length > 1
+    ? `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`
+    : (labels[0] ?? "");
+}
+
+/**
+ * One channel or per-contact flag, as a switch.
+ *
+ * `blockedReason` disables it rather than letting the click through: a channel
+ * with nothing to send to is refused by the mock and by the
+ * `contacts_channel_reachable` constraint, so allowing the toggle would buy a
+ * round trip and a toast in place of an answer the card already has.
+ */
 function ChannelSwitch({
   label,
   name,
   checked,
   busy,
+  blockedReason = null,
   onCheckedChange,
 }: {
   label: string;
   name: string;
   checked: boolean;
   busy: boolean;
+  /** Set when switching this channel on would queue reminders against nothing. */
+  blockedReason?: string | null;
   onCheckedChange: (checked: boolean) => void;
 }) {
+  const blocked = blockedReason !== null;
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={`${label} for ${name}`}
-      disabled={busy}
+      // The card's own line below says the same thing for anyone who cannot
+      // hover; `title` is the pointer shortcut, not the only explanation.
+      title={blockedReason ?? undefined}
+      disabled={busy || blocked}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
         "rounded-pill px-2.5 py-1 text-pill font-semibold transition-colors duration-150 disabled:opacity-60",
         checked ? "bg-accent-tint text-accent" : "bg-alt text-fg-soft",
+        blocked && "cursor-not-allowed",
       )}
     >
       {label}

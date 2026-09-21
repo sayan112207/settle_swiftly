@@ -7,6 +7,7 @@ import {
   getMockAccountContacts,
   getMockAccountDetail,
   LONG_ACCOUNT_NAME,
+  mockCreateContact,
   mockUpdateContact,
   mockUpdateChasingSettings,
   sharmaDetailFixture,
@@ -101,6 +102,83 @@ describe("last usable P0 is protected", () => {
     const rajat = updated.contacts.find((c) => c.contact_id === CONTACT_IDS.rajat);
     expect(rajat?.tier).toBe("P0");
     expect(rajat?.designation).toBe("Accounts Payable");
+  });
+});
+
+describe("a channel needs something to send to", () => {
+  // Rajesh is P1, so these edits never collide with the last-usable-P0 rule.
+  function token(): string {
+    const contacts = getMockAccountContacts(ACCOUNT_IDS.sharma);
+    if (!contacts) throw new Error("missing Sharma contacts fixture");
+    return contacts.updated_at;
+  }
+
+  /** Puts Rajesh back to the fixture's email-and-phone, email-only state. */
+  function reset(): void {
+    mockUpdateContact(
+      ACCOUNT_IDS.sharma,
+      CONTACT_IDS.rajesh,
+      {
+        phone: "+91 99••• •••04",
+        channel_email: true,
+        channel_whatsapp: false,
+        channel_sms: false,
+      },
+      token(),
+    );
+  }
+
+  test("switching WhatsApp on without a phone number is refused", () => {
+    reset();
+    mockUpdateContact(ACCOUNT_IDS.sharma, CONTACT_IDS.rajesh, { phone: null }, token());
+
+    expect(() =>
+      mockUpdateContact(
+        ACCOUNT_IDS.sharma,
+        CONTACT_IDS.rajesh,
+        { channel_whatsapp: true },
+        token(),
+      ),
+    ).toThrow("WhatsApp needs a phone number.");
+  });
+
+  test("clearing the phone number under a live SMS channel is refused", () => {
+    reset();
+    mockUpdateContact(ACCOUNT_IDS.sharma, CONTACT_IDS.rajesh, { channel_sms: true }, token());
+
+    // The rule reads the merged contact, so the same combination is refused
+    // whichever half of it the patch carries.
+    expect(() =>
+      mockUpdateContact(ACCOUNT_IDS.sharma, CONTACT_IDS.rajesh, { phone: null }, token()),
+    ).toThrow("SMS needs a phone number.");
+    reset();
+  });
+
+  test("a new contact cannot arrive with a channel it can't deliver on", () => {
+    expect(() =>
+      mockCreateContact(
+        ACCOUNT_IDS.sharma,
+        {
+          tier: "P1",
+          name: "Priya Nair",
+          email: "priya@sharmatraders.com",
+          channel_whatsapp: true,
+        },
+        token(),
+      ),
+    ).toThrow("WhatsApp needs a phone number.");
+  });
+
+  test("an email-only contact still has to turn Email off, default or not", () => {
+    // channel_email defaults to true, so leaving the address out is the one
+    // way a create body can break the rule without naming a channel at all.
+    expect(() =>
+      mockCreateContact(
+        ACCOUNT_IDS.sharma,
+        { tier: "P1", name: "Priya Nair", phone: "+91 98765 43210" },
+        token(),
+      ),
+    ).toThrow("Email needs an address to send to.");
   });
 });
 

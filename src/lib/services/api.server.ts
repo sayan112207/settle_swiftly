@@ -197,6 +197,20 @@ function fromRpcError(error: unknown): ApiError | null {
     const known = RPC_ERRORS[message];
     if (known) return new ApiError(known.status, message, known.message);
   }
+  // contacts_channel_reachable: a channel is on with nothing to send to. The
+  // check is per-constraint, so it cannot name the channel — the form does that
+  // before submitting, and this is the copy for every other writer.
+  if (
+    code === "23514" &&
+    typeof message === "string" &&
+    message.includes("contacts_channel_reachable")
+  ) {
+    return new ApiError(
+      422,
+      "channel_unreachable",
+      "Email needs an address to send to, and WhatsApp or SMS needs a phone number.",
+    );
+  }
   // contacts_reachable: neither an email nor a phone number.
   if (code === "23514" && typeof message === "string" && message.includes("contacts_reachable")) {
     return new ApiError(422, "contact_unreachable", "Add an email address or a phone number.");
