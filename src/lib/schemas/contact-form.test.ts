@@ -5,6 +5,8 @@ import {
   collectFieldErrors,
   contactFormSchema,
   refreshShownErrors,
+  toCreateBody,
+  toUpdateBody,
   type ContactFormValues,
 } from "@/lib/schemas/contact-form";
 
@@ -96,5 +98,40 @@ describe("contactFormSchema", () => {
       channel_email: false,
     });
     expect(noChannel.channel_email).toBe("Pick at least one channel to reach them on.");
+  });
+});
+
+describe("toUpdateBody", () => {
+  const opened: ContactFormValues = {
+    ...EMPTY_CONTACT,
+    tier: "P1",
+    name: "Rajesh Kumar",
+    designation: "Finance Manager",
+    email: "rajesh@sharmatraders.com",
+  };
+
+  test("sends only the fields this user changed", () => {
+    const edited = { ...opened, phone: "+91 99999 99999" };
+    expect(toUpdateBody(opened, toCreateBody(edited))).toEqual({ phone: "+91 99999 99999" });
+  });
+
+  test("an edit that changed nothing is an empty patch", () => {
+    // The caller closes the form on this rather than spending a write and an
+    // activity row on saying nothing.
+    expect(toUpdateBody(opened, toCreateBody(opened))).toEqual({});
+  });
+
+  test("a cleared optional field is sent as null, not left out", () => {
+    // Absent means "leave alone" to both the RPC and the mock, so a designation
+    // the user deleted has to travel as an explicit null.
+    const edited = { ...opened, designation: "" };
+    expect(toUpdateBody(opened, toCreateBody(edited))).toEqual({ designation: null });
+  });
+
+  test("never carries do_not_contact, whatever the form holds", () => {
+    // The card owns silencing somebody. An edit that does not mention it cannot
+    // un-silence them, which is why the form has no such field.
+    const edited = { ...opened, name: "Rajesh K." };
+    expect(Object.keys(toUpdateBody(opened, toCreateBody(edited)))).toEqual(["name"]);
   });
 });

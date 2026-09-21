@@ -10,8 +10,10 @@ import {
   mockCreateContact,
   mockUpdateContact,
   mockUpdateChasingSettings,
+  sharmaContactsFixture,
   sharmaDetailFixture,
 } from "@/lib/services/accounts.mocks";
+import type { AccountContact } from "@/lib/schemas/accounts";
 
 function moneyToCents(value: string): bigint {
   const [rupees, paise = "0"] = value.split(".");
@@ -179,6 +181,60 @@ describe("a channel needs something to send to", () => {
         token(),
       ),
     ).toThrow("Email needs an address to send to.");
+  });
+});
+
+describe("a corrected email address clears the bounce", () => {
+  // Rajat is Sharma's only usable P0 and his address is bouncing, which is what
+  // puts the account on "Can't chase". Editing that address is the fix the
+  // bounce strip asks for, so it has to actually land.
+  function token(): string {
+    const contacts = getMockAccountContacts(ACCOUNT_IDS.sharma);
+    if (!contacts) throw new Error("missing Sharma contacts fixture");
+    return contacts.updated_at;
+  }
+
+  function rajat(contacts: { contacts: { contact_id: string }[] }) {
+    const found = contacts.contacts.find((c) => c.contact_id === CONTACT_IDS.rajat);
+    if (!found) throw new Error("missing Rajat");
+    return found as AccountContact;
+  }
+
+  // One sequence rather than two tests: the fixture's bounce is spent the first
+  // time an address is changed, so the "kept" half has to be observed before
+  // the "cleared" half, not left to the order two tests happen to run in.
+  test("kept by an edit that leaves the address alone, cleared by one that doesn't", () => {
+    const before = rajat(sharmaContactsFixture);
+    expect(before.delivery_state).toBe("bounced");
+    // A timestamp, not just "defined": null is defined too, and that is the
+    // exact value this is here to rule out.
+    expect(typeof before.last_bounced_at).toBe("string");
+
+    // `delivery_state` is the mail provider's, not the user's: renaming
+    // somebody does not clear what their address did.
+    const renamed = rajat(
+      mockUpdateContact(
+        ACCOUNT_IDS.sharma,
+        CONTACT_IDS.rajat,
+        { designation: "Senior Accounts Executive" },
+        token(),
+      ),
+    );
+    expect(renamed.delivery_state).toBe("bounced");
+    expect(renamed.last_bounced_at).toBe(before.last_bounced_at);
+
+    // The address the verdict was about is gone, so the new one starts where
+    // every address starts.
+    const corrected = rajat(
+      mockUpdateContact(
+        ACCOUNT_IDS.sharma,
+        CONTACT_IDS.rajat,
+        { email: "rajat.mehta@sharmatraders.com" },
+        token(),
+      ),
+    );
+    expect(corrected.delivery_state).toBe("unverified");
+    expect(corrected.last_bounced_at).toBeNull();
   });
 });
 

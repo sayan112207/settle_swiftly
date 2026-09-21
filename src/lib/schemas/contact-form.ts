@@ -5,8 +5,10 @@ import {
   contactLanguageSchema,
   contactTierSchema,
   CONTACT_CHANNELS,
+  updateContactBodySchema,
   type AccountContact,
   type CreateContactBody,
+  type UpdateContactBody,
 } from "@/lib/schemas/accounts";
 
 /**
@@ -132,6 +134,36 @@ export function toCreateBody(values: ContactFormValues): CreateContactBody {
     always_cc: values.always_cc,
     language: values.language,
   };
+}
+
+/**
+ * The fields the user actually changed, as a PATCH body.
+ *
+ * `opened` is the contact as the form was handed it, not as it stands now; a
+ * `CreateContactBody` is what the form submits, whichever mode it is in. A
+ * PATCH of every field would overwrite whatever somebody else changed while
+ * this form sat open — collections is a shared workflow, and the `If-Match`
+ * token is the account's whole ladder, so it cannot tell an edit of *this*
+ * contact from a channel toggled on another card. Sending only the fields this
+ * user touched is what makes that coarse token harmless: the two edits have to
+ * land on the same field to collide at all.
+ *
+ * `{}` when nothing changed — the caller closes the form rather than spending
+ * a write, and an activity row, on saying nothing.
+ */
+export function toUpdateBody(
+  opened: ContactFormValues,
+  edited: CreateContactBody,
+): UpdateContactBody {
+  const before = toCreateBody(opened);
+
+  // `unknown` values, then parsed: the schema is what decides this is a valid
+  // body, here as everywhere else, so nothing has to be cast into shape.
+  const changed: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(edited)) {
+    if (value !== before[key as keyof CreateContactBody]) changed[key] = value;
+  }
+  return updateContactBodySchema.parse(changed);
 }
 
 /** First message per field, so one bad field does not bury the others. */

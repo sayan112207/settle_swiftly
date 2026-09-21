@@ -28,7 +28,7 @@ import {
   type CreateContactBody,
   type UpdateContactBody,
 } from "@/lib/schemas/accounts";
-import { fromContact } from "@/lib/schemas/contact-form";
+import { fromContact, toUpdateBody, type ContactFormValues } from "@/lib/schemas/contact-form";
 import { AccountsApiError, accountsQueryKeys, getAccountContacts } from "@/lib/services/accounts";
 import { cn } from "@/lib/utils";
 
@@ -237,19 +237,40 @@ function ContactsLadder({
   const [addingTo, setAddingTo] = useState<ContactTier | null>(openAddFor ?? null);
 
   /**
-   * Which contact's card has been swapped for an edit form, if any.
+   * Which contact's card has been swapped for an edit form, if any, and the
+   * values that form was opened with.
    *
    * One write form open at a time, add included, for the reason the add forms
    * are already exclusive: every form on this panel submits with the same
    * `If-Match` token, and the second to submit would be refused as a stale
    * write after the user had filled it in.
+   *
+   * The snapshot is kept because the card behind the form keeps re-rendering
+   * from the query: by submit time `contact` may be somebody else's newer copy,
+   * and `toUpdateBody` has to diff against what this user was actually shown.
    */
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; opened: ContactFormValues } | null>(null);
 
-  function openEditor(contactId: string) {
+  /**
+   * Saves an edit, sending only what this user changed.
+   *
+   * An edit that changed nothing closes without a write: the PATCH would be
+   * empty, and the ladder would still bump its version and log a
+   * `contact_edited` row saying nothing happened.
+   */
+  function saveEdit(contactId: string, opened: ContactFormValues, edited: CreateContactBody) {
+    const patch = toUpdateBody(opened, edited);
+    if (Object.keys(patch).length === 0) {
+      setEditing(null);
+      return;
+    }
+    onUpdate(contactId, patch, () => setEditing(null));
+  }
+
+  function openEditor(contact: AccountContact) {
     setAddingTo(null);
     onAddFormClosed?.();
-    setEditing(contactId);
+    setEditing({ id: contact.contact_id, opened: fromContact(contact) });
   }
 
   // Arriving with `?add=` again — clicking the strip from another tab, or a
@@ -346,17 +367,15 @@ function ContactsLadder({
 
               <div className="space-y-3">
                 {tierContacts.map((contact) =>
-                  editing === contact.contact_id ? (
+                  editing?.id === contact.contact_id ? (
                     <ContactForm
                       key={contact.contact_id}
                       tier={contact.tier}
-                      initial={fromContact(contact)}
+                      initial={editing.opened}
                       busy={busy}
                       submitLabel="Save changes"
                       onCancel={() => setEditing(null)}
-                      onSubmit={(body) =>
-                        onUpdate(contact.contact_id, body, () => setEditing(null))
-                      }
+                      onSubmit={(values) => saveEdit(contact.contact_id, editing.opened, values)}
                     />
                   ) : (
                     <ContactCard
@@ -365,7 +384,7 @@ function ContactsLadder({
                       busy={busy}
                       onUpdate={onUpdate}
                       onDelete={onDelete}
-                      onEdit={openEditor}
+                      onEdit={() => openEditor(contact)}
                     />
                   ),
                 )}
@@ -500,7 +519,8 @@ function ContactCard({
   busy: boolean;
   onUpdate: (contactId: string, body: UpdateContactBody) => void;
   onDelete: (contactId: string) => void;
-  onEdit: (contactId: string) => void;
+  /** Opens this contact's edit form. The ladder owns which one is open. */
+  onEdit: () => void;
 }) {
   const [dncReason, setDncReason] = useState(contact.dnc_reason ?? "");
   const missingDetail = missingChannelDetail(contact);
@@ -557,7 +577,7 @@ function ContactCard({
               <DropdownMenuItem
                 disabled={busy}
                 className="cursor-pointer text-body font-semibold focus:bg-hovered"
-                onSelect={() => onEdit(contact.contact_id)}
+                onSelect={() => onEdit()}
               >
                 Edit contact
               </DropdownMenuItem>

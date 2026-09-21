@@ -1513,7 +1513,18 @@ export function mockUpdateContact(
   // WhatsApp on breaks the rule exactly as much as turning WhatsApp on does.
   refuseUnreachableChannels(merged);
 
-  Object.assign(contact, body, { updated_at: bumpUpdatedAt() });
+  // A new address carries no bounce history — the provider's verdict belonged
+  // to the one that bounced. Until contacts could be edited there was no way to
+  // reach this, and leaving the state behind would strand the account on
+  // "Can't chase — email bouncing" after the very fix the bounce strip asks for.
+  // `delivery_state` stays a system field: correcting the address is not a user
+  // edit of it, it is the row it described going away.
+  const emailChanged = body.email !== undefined && (body.email ?? null) !== contact.email;
+  const afterEmailChange = emailChanged
+    ? { delivery_state: "unverified" as const, last_bounced_at: null }
+    : {};
+
+  Object.assign(contact, body, afterEmailChange, { updated_at: bumpUpdatedAt() });
   contacts.updated_at = contact.updated_at;
   appendActivity(accountId, "contact_edited", `${contact.name} updated.`);
   syncChaseStateFromLadder(accountId);

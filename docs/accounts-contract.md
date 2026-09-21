@@ -124,6 +124,8 @@ avg_days_late    = mean of (paid_on - due_date) over the last 12 months
 - **Removing or marking `do_not_contact` on the last usable P0 is rejected** with `409` and code `last_p0_required`. The account would silently become unchaseable otherwise.
 - **A channel may not be on without the detail it sends to**: `channel_email` needs an email address, `channel_whatsapp` and `channel_sms` need a phone number. Enforced by the `contacts_channel_reachable` check constraint, because `contacts_reachable` only asks for one of the two — an email-only contact still defaults to `channel_email = true` and can have WhatsApp switched on. A violation is a `422` with code `channel_unreachable`. Reminders queued against a number that does not exist make an account read as chased while nothing goes out.
 - Setting `delivery_state='bounced'` is a system action from the mail provider, never a user edit.
+- **Changing a contact's email resets `delivery_state` to `unverified` and clears `last_bounced_at`.** Not an exception to the rule above: the verdict was about the address that has just been replaced, and a new address has no delivery history. Without this, correcting a bouncing contact leaves the account on `bounced_p0` — "Can't chase" — for an address it no longer holds, which is the state the bounce strip sends people to Contacts to clear.
+- A `PATCH` carries only the fields the editor actually changed. `If-Match` is the account's whole ladder, so it cannot distinguish an edit of this contact from a channel toggled on another card; sending the untouched fields back would overwrite a concurrent edit that the token was never going to catch.
 
 ### 2.4 Pausing
 
