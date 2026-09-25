@@ -76,6 +76,8 @@ function ChasingPage() {
   const [skippedIds, setSkippedIds] = useState<ReadonlySet<string>>(new Set());
   const [approveAllOpen, setApproveAllOpen] = useState(false);
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   const queueQuery = useQuery({
     queryKey: chasingQueueKey,
@@ -96,6 +98,11 @@ function ChasingPage() {
   const approveMutation = useMutation({
     mutationFn: (invoiceIds: readonly string[]) => postChases(invoiceIds),
     onSuccess: async (result, invoiceIds) => {
+      setPendingIds((current) => {
+        const next = new Set(current);
+        for (const id of invoiceIds) next.delete(id);
+        return next;
+      });
       setItemErrors((current) => {
         const next = { ...current };
         for (const id of invoiceIds) delete next[id];
@@ -110,6 +117,11 @@ function ChasingPage() {
       toast(`${result.queued} queued. Skipped ${skippedLabel(result.skipped, allItems)}.`);
     },
     onError: (error, invoiceIds) => {
+      setPendingIds((current) => {
+        const next = new Set(current);
+        for (const id of invoiceIds) next.delete(id);
+        return next;
+      });
       const fallback =
         invoiceIds.length === 1 ? "Couldn't queue that chase." : "Couldn't queue those chases.";
       const message = userFacingMessage(error, fallback);
@@ -122,12 +134,23 @@ function ChasingPage() {
   });
 
   function approveOne(invoiceId: string) {
+    setPendingIds((current) => new Set(current).add(invoiceId));
     approveMutation.mutate([invoiceId]);
   }
 
   function approveAll() {
     setApproveAllOpen(false);
-    approveMutation.mutate(items.map((item) => item.invoice_id));
+    const invoiceIds = items.map((item) => item.invoice_id);
+    setBulkError(null);
+    setPendingIds((current) => new Set([...current, ...invoiceIds]));
+    approveMutation.mutate(invoiceIds, {
+      onError: (error) => {
+        setBulkError(userFacingMessage(error, "Couldn't queue those chases."));
+      },
+      onSuccess: () => {
+        setBulkError(null);
+      },
+    });
   }
 
   function skipOne(invoiceId: string) {
@@ -135,8 +158,7 @@ function ChasingPage() {
     if (expandedId === invoiceId) setExpandedId(null);
   }
 
-  const isPendingFor = (invoiceId: string) =>
-    approveMutation.isPending && (approveMutation.variables ?? []).includes(invoiceId);
+  const isPendingFor = (invoiceId: string) => pendingIds.has(invoiceId);
 
   const totalOutstanding = items.reduce((sum, item) => sum + Number(item.amount_outstanding), 0);
 
@@ -150,13 +172,26 @@ function ChasingPage() {
           </p>
         </div>
         {!queueQuery.isPending && !queueQuery.isError && items.length > 0 ? (
-          <AppButton variant="primary" onClick={() => setApproveAllOpen(true)}>
+          <AppButton
+            variant="primary"
+            onClick={() => setApproveAllOpen(true)}
+            disabled={pendingIds.size > 0}
+          >
             Approve all {items.length}
           </AppButton>
         ) : null}
       </div>
 
       <ChasingTabs />
+
+      {bulkError ? (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-card border border-danger-edge bg-danger-tint px-4 py-3"
+        >
+          <p className="text-body font-semibold text-danger">{bulkError}</p>
+        </div>
+      ) : null}
 
       {queueQuery.isPending ? <QueueSkeletons /> : null}
 
