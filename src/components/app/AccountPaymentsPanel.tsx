@@ -1,18 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 
 import { AppButton } from "@/components/app/AppButton";
 import { AppSkeleton } from "@/components/app/AppSkeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { formatINR, formatShortDate, isZeroMoney } from "@/lib/format";
-import type { AccountPayment, PaymentTone } from "@/lib/schemas/accounts";
+import { PaymentCard } from "@/components/app/PaymentCard";
+import { PaymentAllocationModal } from "@/components/app/PaymentAllocationModal";
+import { PaymentTriageTabs } from "@/components/app/PaymentTriageTabs";
+import { PaymentReviewBanner } from "@/components/app/PaymentReviewBanner";
+import { HeldInvoicesSection } from "@/components/app/HeldInvoicesSection";
+import { formatINR, isZeroMoney } from "@/lib/format";
+import type { AccountPayment } from "@/lib/schemas/accounts";
 import { AccountsApiError, accountsQueryKeys, getAccountPayments } from "@/lib/services/accounts";
 
 type AccountPaymentsPanelProps = {
@@ -20,19 +18,69 @@ type AccountPaymentsPanelProps = {
   accountName: string;
 };
 
-const TONE_CLASS: Record<PaymentTone, string> = {
-  muted: "text-fg-soft",
-  warn: "text-warn",
-  danger: "text-danger",
-};
-
-/** Spec §5 — stats strip, payments table, unapplied-credit banner. */
+/** Stats strip, payment cards, unapplied-credit banner, allocation modal. */
 export function AccountPaymentsPanel({ accountId, accountName }: AccountPaymentsPanelProps) {
   const paymentsQuery = useQuery({
     queryKey: accountsQueryKeys.payments(accountId),
     queryFn: () => getAccountPayments(accountId),
     retry: false,
   });
+
+  const [selectedPaymentIndex, setSelectedPaymentIndex] = useState<number | null>(null);
+  const [allocationPayment, setAllocationPayment] = useState<AccountPayment | null>(null);
+  const [allocationModalOpen, setAllocationModalOpen] = useState(false);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const items = paymentsQuery.data?.items ?? [];
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't navigate if typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (items.length === 0) return;
+
+      switch (e.key.toLowerCase()) {
+        case "j":
+          e.preventDefault();
+          setSelectedPaymentIndex((prev) =>
+            prev === null ? 0 : Math.min(prev + 1, items.length - 1),
+          );
+          break;
+
+        case "k":
+          e.preventDefault();
+          setSelectedPaymentIndex((prev) =>
+            prev === null ? items.length - 1 : Math.max(prev - 1, 0),
+          );
+          break;
+
+        case "enter":
+          e.preventDefault();
+          if (selectedPaymentIndex !== null) {
+            const payment = items[selectedPaymentIndex];
+            if (payment?.action_kind === "allocate") {
+              setAllocationPayment(payment);
+              setAllocationModalOpen(true);
+            }
+          }
+          break;
+
+        case "x":
+          e.preventDefault();
+          // Dismiss not supported by current backend
+          break;
+
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [paymentsQuery.data?.items, selectedPaymentIndex]);
 
   if (paymentsQuery.isPending) {
     return <PaymentsLoading />;
@@ -71,7 +119,7 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
     );
   }
 
-  const { stats, items } = data;
+  const { stats, items: payments } = data;
   const hasUnapplied = !isZeroMoney(stats.unapplied_total);
 
   return (
@@ -82,39 +130,42 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
         averageDelay={stats.average_delay_days}
       />
 
-      <div className="overflow-x-auto rounded-card border border-hairline bg-card">
-        <Table className="min-w-[760px]">
-          <TableHeader>
-            <TableRow className="bg-subtle">
-              <TableHead
-                scope="col"
-                className="text-eyebrow font-semibold tracking-[0.08em] text-fg-muted uppercase"
-              >
-                Payment
-              </TableHead>
-              <TableHead
-                scope="col"
-                className="text-right text-eyebrow font-semibold tracking-[0.08em] text-fg-muted uppercase"
-              >
-                Amount
-              </TableHead>
-              <TableHead
-                scope="col"
-                className="text-eyebrow font-semibold tracking-[0.08em] text-fg-muted uppercase"
-              >
-                Applied to
-              </TableHead>
-              <TableHead scope="col" className="text-right">
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((payment) => (
-              <PaymentRow key={payment.payment_id} payment={payment} />
-            ))}
-          </TableBody>
-        </Table>
+      {/* Triage tabs */}
+      <PaymentTriageTabs totalPayments={payments.length} />
+
+      {/* Stale/unreviewed warning */}
+      <PaymentReviewBanner />
+
+      {/* Held invoices section */}
+      <HeldInvoicesSection />
+
+      {/* Payment cards */}
+      <div className="space-y-3">
+        {payments.length === 0 ? (
+          <div className="text-center py-8 text-prose text-fg-muted">No payments in this view.</div>
+        ) : (
+          payments.map((payment, idx) => (
+            <PaymentCard
+              key={payment.payment_id}
+              payment={payment}
+              isSelected={selectedPaymentIndex === idx}
+              onSelect={() => setSelectedPaymentIndex(idx)}
+              onAllocate={() => {
+                setAllocationPayment(payment);
+                setAllocationModalOpen(true);
+              }}
+              onAdjust={() => {
+                // Adjust shows coming soon via card state
+              }}
+              onDismiss={() => {
+                // Dismiss shows coming soon via card state
+              }}
+              onViewSplit={() => {
+                // View split shows coming soon via card state
+              }}
+            />
+          ))
+        )}
       </div>
 
       {hasUnapplied ? (
@@ -130,6 +181,13 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
           </Link>
         </div>
       ) : null}
+
+      <PaymentAllocationModal
+        open={allocationModalOpen}
+        payment={allocationPayment}
+        accountId={accountId}
+        onOpenChange={setAllocationModalOpen}
+      />
     </div>
   );
 }
@@ -177,40 +235,6 @@ function Stat({
       <dd className={`tnum text-metric font-bold tracking-tight ${STAT_TONE[tone]}`}>{value}</dd>
       <dt className="mt-1 text-prose font-normal text-fg-muted">{label}</dt>
     </div>
-  );
-}
-
-function PaymentRow({ payment }: { payment: AccountPayment }) {
-  return (
-    <TableRow className="group hover:bg-hovered">
-      <TableCell className="py-3 align-top">
-        <div className="text-body font-semibold text-fg">{formatShortDate(payment.date)}</div>
-        <div className="mt-0.5 text-prose font-normal text-fg-muted">
-          {payment.source} · {payment.reference}
-        </div>
-      </TableCell>
-
-      <TableCell className="py-3 text-right align-top">
-        <div className="tnum text-body font-semibold text-fg">{formatINR(payment.amount)}</div>
-        <div className={`mt-0.5 text-prose font-normal ${TONE_CLASS[payment.status_tone]}`}>
-          {payment.status_label}
-        </div>
-      </TableCell>
-
-      <TableCell className="py-3 align-top">
-        <span
-          className={`text-body font-semibold ${payment.is_applied ? "text-fg" : "text-danger"}`}
-        >
-          {payment.applied_to}
-        </span>
-      </TableCell>
-
-      <TableCell className="py-3 text-right align-top">
-        <AppButton variant="text" className="row-action">
-          {payment.action_label}
-        </AppButton>
-      </TableCell>
-    </TableRow>
   );
 }
 
