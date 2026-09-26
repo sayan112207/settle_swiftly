@@ -10,6 +10,7 @@ import { PRODUCT_NAME } from "@/lib/brand";
 import { formatINR, formatShortDate } from "@/lib/format";
 import { accountsQueryKeys, getAccounts } from "@/lib/services/accounts";
 import { getInvoices, invoicesQueryKeys } from "@/lib/services/invoices";
+import { exportInvoicesAsCSV } from "@/lib/utils/csv-export";
 
 const invoicesSearchSchema = z.object({
   status: z.enum(["overdue", "disputed", "promise-broken"]).optional(),
@@ -21,6 +22,7 @@ export const Route = createFileRoute("/app/invoices")({
   component: InvoicesPage,
 });
 
+/** Calculate days overdue from a due date. Returns 0 if not yet due. */
 function getDaysOverdue(dueDate: string): number {
   const due = new Date(dueDate);
   const today = new Date();
@@ -29,6 +31,7 @@ function getDaysOverdue(dueDate: string): number {
   return Math.max(0, diffDays);
 }
 
+/** Categorize days overdue into aging buckets for display. */
 function getAgingBucket(daysOverdue: number): string {
   if (daysOverdue === 0) return "Not yet due";
   if (daysOverdue <= 30) return "1–30 days";
@@ -37,6 +40,7 @@ function getAgingBucket(daysOverdue: number): string {
   return "90+ days";
 }
 
+/** Check if a date falls within a named range (Today, This week, etc.). */
 function isDateInRange(dateStr: string, bucket: string): boolean {
   const date = new Date(`${dateStr}T12:00:00+05:30`);
   const today = new Date();
@@ -70,6 +74,7 @@ function isDateInRange(dateStr: string, bucket: string): boolean {
   return false;
 }
 
+/** Get Tailwind classes for status badge based on invoice status. */
 function getStatusColor(status: string) {
   const s = status.toLowerCase();
   if (s === "paid" || s === "partially_paid") {
@@ -125,6 +130,7 @@ const AMOUNT_BUCKETS = [
   { label: "> ₹5L", key: ">5L", min: 500000, max: Infinity },
 ];
 
+/** Invoices dashboard with filtering, sorting, and bulk actions. */
 function InvoicesPage() {
   const { orgs } = Route.useRouteContext();
   const orgId = orgs[0]!.id;
@@ -158,12 +164,13 @@ function InvoicesPage() {
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [savedView, setSavedView] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string>("Oldest overdue first");
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [openQuickFilter, setOpenQuickFilter] = useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
-  const [optionalColumns, setOptionalColumns] = useState<Set<string>>(new Set());
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
+    new Set(["account", "invoice", "amount", "invoiceDate", "dueDate", "status"]),
+  );
 
   const filterMenuRef = useRef<HTMLDivElement>(null);
 
@@ -171,7 +178,6 @@ function InvoicesPage() {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node)) {
-        setFiltersOpen(false);
         setColumnsOpen(false);
         setOpenQuickFilter(null);
       }
@@ -179,7 +185,6 @@ function InvoicesPage() {
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setFiltersOpen(false);
         setColumnsOpen(false);
         setOpenQuickFilter(null);
       }
@@ -226,6 +231,11 @@ function InvoicesPage() {
     if (!invoicesQuery.data) return [];
 
     let result = viewMode === "collections" ? collectionsBase : invoicesQuery.data;
+
+    // Apply saved view filter
+    if (savedView === "Outstanding > ₹1L") {
+      result = result.filter((inv) => inv.amount > 100000);
+    }
 
     // Search filter
     if (searchInput.trim()) {
@@ -295,6 +305,7 @@ function InvoicesPage() {
   }, [
     invoicesQuery.data,
     viewMode,
+    savedView,
     searchInput,
     activeFilters,
     sortBy,
@@ -321,23 +332,19 @@ function InvoicesPage() {
 
   // Metrics
   const metrics = useMemo(() => {
-    const dataToUse =
-      viewMode === "collections" && filteredInvoices.length > 0
-        ? filteredInvoices
-        : (invoicesQuery.data ?? []);
-    if (dataToUse.length === 0) return { outstanding: 0, overdue: 0, dueWeek: 0 };
-    const outstanding = dataToUse.reduce((sum, inv) => sum + inv.amount, 0);
-    const overdue = dataToUse
+    if (filteredInvoices.length === 0) return { outstanding: 0, overdue: 0, dueWeek: 0 };
+    const outstanding = filteredInvoices.reduce((sum, inv) => sum + inv.amount, 0);
+    const overdue = filteredInvoices
       .filter((inv) => getDaysOverdue(inv.due_date) > 0)
       .reduce((sum, inv) => sum + inv.amount, 0);
-    const dueWeek = dataToUse
+    const dueWeek = filteredInvoices
       .filter((inv) => {
         const days = getDaysOverdue(inv.due_date);
         return days >= 0 && days <= 7;
       })
       .reduce((sum, inv) => sum + inv.amount, 0);
     return { outstanding, overdue, dueWeek };
-  }, [invoicesQuery.data, viewMode, filteredInvoices]);
+  }, [filteredInvoices]);
 
   const isLoading = invoicesQuery.isPending;
   const isError = !!invoicesQuery.error;
@@ -419,7 +426,24 @@ function InvoicesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-100">
+          <button
+            onClick={() => {
+              const toExport = filteredInvoices.map((inv) => ({
+                id: inv.id,
+                invoice_number: inv.invoice_number,
+                account_id: inv.account_id,
+                amount: inv.amount,
+                issue_date: inv.issue_date,
+                due_date: inv.due_date,
+                status: inv.status,
+              }));
+              exportInvoicesAsCSV(
+                toExport,
+                `invoices-${new Date().toISOString().split("T")[0]}.csv`,
+              );
+            }}
+            className="rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-100"
+          >
             Export
           </button>
           <Link
@@ -494,339 +518,231 @@ function InvoicesPage() {
             </button>
           </div>
 
-          {/* Filters and Search */}
-          <div className="flex flex-wrap items-center gap-2" ref={filterMenuRef}>
-            <div className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 h-10">
-              <Search width="14" height="14" className="text-gray-600" />
-              <input
-                type="search"
-                placeholder="Search invoice, account..."
-                value={searchInput}
-                onChange={(e) => {
-                  setSearchInput(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="flex-1 border-none bg-transparent text-sm outline-none"
-              />
-            </div>
-
-            {/* Quick Filter Dropdowns */}
-            {["Status", "Ageing", "Account", "Amount", "Invoice date", "Due date"].map((filter) => (
-              <div key={filter} className="relative">
-                <button
-                  onClick={() => {
-                    setOpenQuickFilter(openQuickFilter === filter ? null : filter);
-                    setFiltersOpen(false);
-                    setColumnsOpen(false);
+          {/* Filter Bar - Responsive Layout */}
+          <div ref={filterMenuRef}>
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              {/* Search */}
+              <div className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 h-10 flex-grow min-w-64 focus-within:border-gray-400 focus-within:[--tw-ring-color:transparent]">
+                <Search width="14" height="14" className="text-gray-600" />
+                <input
+                  type="search"
+                  placeholder="Search invoice, account..."
+                  value={searchInput}
+                  onChange={(e) => {
+                    setSearchInput(e.target.value);
+                    setCurrentPage(1);
                   }}
-                  className={`flex items-center gap-1 rounded-full px-3 py-2 text-sm font-semibold transition-all h-10 whitespace-nowrap ${
-                    openQuickFilter === filter
-                      ? "border border-green-200 bg-green-50 text-green-700"
-                      : "border border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
-                  }`}
-                >
-                  {filter}
-                  <ChevronDown
-                    width="12"
-                    height="12"
-                    className={`transition-transform ${
-                      openQuickFilter === filter ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-                {openQuickFilter === filter && (
-                  <div className="absolute top-10 left-0 z-20 min-w-max rounded-lg border border-gray-200 bg-white shadow-lg">
-                    {filter === "Status" &&
-                      uniqueStatuses.map((status) => (
-                        <button
-                          key={status}
-                          onClick={() => handleQuickFilterSelect(filter, status)}
-                          className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
-                        >
-                          {status}
-                        </button>
-                      ))}
-                    {filter === "Ageing" &&
-                      ["Not yet due", "1–30 days", "31–60 days", "61–90 days", "90+ days"].map(
-                        (bucket) => (
-                          <button
-                            key={bucket}
-                            onClick={() => handleQuickFilterSelect(filter, bucket)}
-                            className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
-                          >
-                            {bucket}
-                          </button>
-                        ),
-                      )}
-                    {filter === "Account" &&
-                      uniqueAccounts.map((account) => (
-                        <button
-                          key={account}
-                          onClick={() => handleQuickFilterSelect(filter, account)}
-                          className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100 whitespace-nowrap"
-                        >
-                          {account}
-                        </button>
-                      ))}
-                    {filter === "Amount" &&
-                      AMOUNT_BUCKETS.map((bucket) => (
-                        <button
-                          key={bucket.key}
-                          onClick={() => handleQuickFilterSelect(filter, bucket.key)}
-                          className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
-                        >
-                          {bucket.label}
-                        </button>
-                      ))}
-                    {filter === "Invoice date" &&
-                      ["Today", "This week", "This month", "Last month", "This quarter"].map(
-                        (bucket) => (
-                          <button
-                            key={bucket}
-                            onClick={() => handleQuickFilterSelect(filter, bucket)}
-                            className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
-                          >
-                            {bucket}
-                          </button>
-                        ),
-                      )}
-                    {filter === "Due date" &&
-                      ["Today", "This week", "This month", "Last month", "This quarter"].map(
-                        (bucket) => (
-                          <button
-                            key={bucket}
-                            onClick={() => handleQuickFilterSelect(filter, bucket)}
-                            className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
-                          >
-                            {bucket}
-                          </button>
-                        ),
-                      )}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* More Filters */}
-            <button
-              onClick={() => {
-                setFiltersOpen(!filtersOpen);
-                setOpenQuickFilter(null);
-                setColumnsOpen(false);
-              }}
-              className={`rounded-full px-3 py-2 text-sm font-semibold h-10 whitespace-nowrap ${
-                filtersOpen
-                  ? "border border-green-200 bg-green-50 text-green-700"
-                  : "border border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
-              }`}
-            >
-              More filters{filterChips.length > 0 ? ` · ${filterChips.length}` : ""}
-            </button>
-
-            <div className="flex-1" />
-
-            {/* Sort */}
-            <select
-              value={sortBy}
-              onChange={(e) => {
-                setSortBy(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 h-10"
-            >
-              {SORT_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-
-            {/* Columns */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  setColumnsOpen(!columnsOpen);
-                  setOpenQuickFilter(null);
-                  setFiltersOpen(false);
-                }}
-                className="rounded-full border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 h-10 whitespace-nowrap"
-              >
-                Columns
-              </button>
-              {columnsOpen && (
-                <div className="absolute top-10 right-0 z-20 w-48 rounded-lg border border-gray-200 bg-white shadow-lg p-3">
-                  <div className="text-xs font-semibold uppercase text-gray-600 mb-2">
-                    Optional columns
-                  </div>
-                  {["PO number", "GSTIN", "Payment terms", "GST", "TDS"].map((col) => (
-                    <label
-                      key={col}
-                      className="flex items-center gap-2 py-1 text-sm cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={optionalColumns.has(col)}
-                        onChange={(e) => {
-                          const newCols = new Set(optionalColumns);
-                          if (e.target.checked) {
-                            newCols.add(col);
-                          } else {
-                            newCols.delete(col);
-                          }
-                          setOptionalColumns(newCols);
-                        }}
-                        className="w-4 h-4"
-                      />
-                      {col}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* More Filters Panel */}
-          {filtersOpen && (
-            <div className="bg-white border border-gray-200 rounded-lg p-4 mb-3">
-              <div className="grid grid-cols-4 gap-4 mb-4">
-                <div>
-                  <label className="text-xs font-semibold uppercase text-gray-600 mb-2 block">
-                    Status
-                  </label>
-                  <select
-                    value={activeFilters["status"] || ""}
-                    onChange={(e) => {
-                      const newFilters = { ...activeFilters };
-                      if (e.target.value) {
-                        newFilters["status"] = e.target.value;
-                      } else {
-                        delete newFilters["status"];
-                      }
-                      setActiveFilters(newFilters);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm"
-                  >
-                    <option value="">Any status</option>
-                    {uniqueStatuses.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold uppercase text-gray-600 mb-2 block">
-                    Account
-                  </label>
-                  <select
-                    value={activeFilters["account"] || ""}
-                    onChange={(e) => {
-                      const newFilters = { ...activeFilters };
-                      if (e.target.value) {
-                        newFilters["account"] = e.target.value;
-                      } else {
-                        delete newFilters["account"];
-                      }
-                      setActiveFilters(newFilters);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm"
-                  >
-                    <option value="">Any account</option>
-                    {uniqueAccounts.map((a) => (
-                      <option key={a} value={a}>
-                        {a}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold uppercase text-gray-600 mb-2 block">
-                    Amount
-                  </label>
-                  <select
-                    value={activeFilters["amount"] || ""}
-                    onChange={(e) => {
-                      const newFilters = { ...activeFilters };
-                      if (e.target.value) {
-                        newFilters["amount"] = e.target.value;
-                      } else {
-                        delete newFilters["amount"];
-                      }
-                      setActiveFilters(newFilters);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm"
-                  >
-                    <option value="">Any amount</option>
-                    {AMOUNT_BUCKETS.map((b) => (
-                      <option key={b.key} value={b.key}>
-                        {b.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold uppercase text-gray-600 mb-2 block">
-                    Ageing
-                  </label>
-                  <select
-                    value={activeFilters["ageing"] || ""}
-                    onChange={(e) => {
-                      const newFilters = { ...activeFilters };
-                      if (e.target.value) {
-                        newFilters["ageing"] = e.target.value;
-                      } else {
-                        delete newFilters["ageing"];
-                      }
-                      setActiveFilters(newFilters);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm"
-                  >
-                    <option value="">Any ageing</option>
-                    <option value="Not yet due">Not yet due</option>
-                    <option value="1–30 days">1–30 days</option>
-                    <option value="31–60 days">31–60 days</option>
-                    <option value="61–90 days">61–90 days</option>
-                    <option value="90+ days">90+ days</option>
-                  </select>
-                </div>
+                  className="flex-1 border-none bg-transparent text-sm outline-none"
+                  style={
+                    {
+                      outline: "none",
+                      boxShadow: "none",
+                      WebkitFocusRingColor: "transparent",
+                    } as Record<string, string>
+                  }
+                />
               </div>
 
-              <div className="border-t border-gray-200 pt-4">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-semibold uppercase text-gray-600">Amount</span>
-                  {AMOUNT_BUCKETS.map((bucket) => (
+              {/* Quick Filters */}
+              {["Status", "Ageing", "Account", "Amount", "Invoice date", "Due date"].map(
+                (filter) => (
+                  <div key={filter} className="relative">
                     <button
-                      key={bucket.key}
                       onClick={() => {
-                        const newFilters = { ...activeFilters };
-                        if (activeFilters["amount"] === bucket.key) {
-                          delete newFilters["amount"];
-                        } else {
-                          newFilters["amount"] = bucket.key;
-                        }
-                        setActiveFilters(newFilters);
-                        setCurrentPage(1);
+                        setOpenQuickFilter(openQuickFilter === filter ? null : filter);
+                        setColumnsOpen(false);
                       }}
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        activeFilters["amount"] === bucket.key
+                      className={`flex items-center gap-1 rounded-full px-3 py-2 text-sm font-semibold h-10 whitespace-nowrap ${
+                        openQuickFilter === filter
                           ? "border border-green-200 bg-green-50 text-green-700"
                           : "border border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
                       }`}
                     >
-                      {bucket.label}
+                      {filter}
+                      <ChevronDown
+                        width="12"
+                        height="12"
+                        className={`transition-transform ${openQuickFilter === filter ? "rotate-180" : ""}`}
+                      />
                     </button>
+                    {openQuickFilter === filter && (
+                      <div className="absolute top-10 left-0 z-20 min-w-max rounded-lg border border-gray-200 bg-white shadow-lg">
+                        {filter === "Status" &&
+                          uniqueStatuses.map((status) => (
+                            <button
+                              key={status}
+                              onClick={() => handleQuickFilterSelect(filter, status)}
+                              className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                            >
+                              {status}
+                            </button>
+                          ))}
+                        {filter === "Ageing" &&
+                          ["Not yet due", "1–30 days", "31–60 days", "61–90 days", "90+ days"].map(
+                            (bucket) => (
+                              <button
+                                key={bucket}
+                                onClick={() => handleQuickFilterSelect(filter, bucket)}
+                                className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                              >
+                                {bucket}
+                              </button>
+                            ),
+                          )}
+                        {filter === "Account" &&
+                          uniqueAccounts.map((account) => (
+                            <button
+                              key={account}
+                              onClick={() => handleQuickFilterSelect(filter, account)}
+                              className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100 whitespace-nowrap"
+                            >
+                              {account}
+                            </button>
+                          ))}
+                        {filter === "Amount" &&
+                          AMOUNT_BUCKETS.map((bucket) => (
+                            <button
+                              key={bucket.key}
+                              onClick={() => handleQuickFilterSelect(filter, bucket.key)}
+                              className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                            >
+                              {bucket.label}
+                            </button>
+                          ))}
+                        {filter === "Invoice date" &&
+                          ["Today", "This week", "This month", "Last month", "This quarter"].map(
+                            (bucket) => (
+                              <button
+                                key={bucket}
+                                onClick={() => handleQuickFilterSelect(filter, bucket)}
+                                className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                              >
+                                {bucket}
+                              </button>
+                            ),
+                          )}
+                        {filter === "Due date" &&
+                          ["Today", "This week", "This month", "Last month", "This quarter"].map(
+                            (bucket) => (
+                              <button
+                                key={bucket}
+                                onClick={() => handleQuickFilterSelect(filter, bucket)}
+                                className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                              >
+                                {bucket}
+                              </button>
+                            ),
+                          )}
+                      </div>
+                    )}
+                  </div>
+                ),
+              )}
+
+              {/* Sort & Columns - grouped on right */}
+              <div className="flex items-center gap-2 ml-auto">
+                <select
+                  value={sortBy}
+                  onChange={(e) => {
+                    setSortBy(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  onFocus={() => setColumnsOpen(false)}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 h-10 focus:border-gray-400 focus:[--tw-ring-color:transparent] focus:[box-shadow:none]"
+                >
+                  {SORT_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
                   ))}
+                </select>
+
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setColumnsOpen(!columnsOpen);
+                      setOpenQuickFilter(null);
+                    }}
+                    className="rounded-full border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 h-10 whitespace-nowrap focus:border-gray-400 focus:ring-0"
+                  >
+                    Columns
+                  </button>
+                  {columnsOpen && (
+                    <div className="absolute top-10 right-0 z-20 w-56 rounded-lg border border-gray-200 bg-white shadow-lg p-4">
+                      <div className="text-xs font-semibold uppercase text-gray-600 mb-3">
+                        Visible columns
+                      </div>
+                      <div className="space-y-2">
+                        {[
+                          { key: "account", label: "Account" },
+                          { key: "invoice", label: "Invoice" },
+                          { key: "amount", label: "Amount" },
+                          { key: "invoiceDate", label: "Invoice date" },
+                          { key: "dueDate", label: "Due date" },
+                          { key: "status", label: "Status" },
+                        ].map((col) => (
+                          <label
+                            key={col.key}
+                            className="flex items-center gap-2 text-sm cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={visibleColumns.has(col.key)}
+                              onChange={(e) => {
+                                const newCols = new Set(visibleColumns);
+                                if (e.target.checked) {
+                                  newCols.add(col.key);
+                                } else {
+                                  newCols.delete(col.key);
+                                }
+                                setVisibleColumns(newCols);
+                              }}
+                              className="w-4 h-4 rounded border-gray-300"
+                            />
+                            {col.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
-          )}
+
+            {/* Active Filter Chips */}
+            {filterChips.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                {filterChips.map((chip) => (
+                  <div
+                    key={chip.key}
+                    className="flex items-center gap-2 rounded-full bg-gray-100 border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-900"
+                  >
+                    {chip.label}
+                    <button
+                      onClick={() => {
+                        const newFilters = { ...activeFilters };
+                        delete newFilters[chip.key as keyof ActiveFilters];
+                        setActiveFilters(newFilters);
+                        setCurrentPage(1);
+                      }}
+                      className="text-gray-600 hover:text-gray-900"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => {
+                    setActiveFilters({});
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs font-semibold text-gray-600 hover:text-gray-900"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Saved Views */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -834,14 +750,20 @@ function InvoicesPage() {
             {SAVED_VIEWS.map((view) => (
               <button
                 key={view.label}
-                onClick={() => setSavedView(savedView === view.label ? null : view.label)}
+                onClick={() => {
+                  setSavedView(savedView === view.label ? null : view.label);
+                  setCurrentPage(1);
+                }}
                 className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  savedView === view.label
-                    ? "border border-green-200 bg-green-50 text-green-700"
-                    : "border border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
+                  view.label === "Outstanding > ₹1L"
+                    ? savedView === view.label
+                      ? "border border-green-200 bg-green-50 text-green-700"
+                      : "border border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
+                    : "border border-gray-300 bg-white text-gray-400 cursor-not-allowed"
                 }`}
+                disabled={view.label !== "Outstanding > ₹1L"}
               >
-                {view.label}
+                {view.label === "Outstanding > ₹1L" ? view.label : `${view.label} — Coming soon`}
               </button>
             ))}
             <button className="text-xs font-semibold text-green-700 hover:text-green-800 bg-none border-none cursor-pointer">
@@ -892,13 +814,44 @@ function InvoicesPage() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button className="px-3 py-1 rounded-full bg-green-700 text-white text-sm font-semibold hover:bg-green-800">
+                <button
+                  onClick={() => {
+                    alert("Record payment feature coming soon. Backend integration needed.");
+                  }}
+                  className="px-3 py-1 rounded-full bg-green-700 text-white text-sm font-semibold hover:bg-green-800 disabled:opacity-50"
+                >
                   Record payment
                 </button>
-                <button className="px-3 py-1 rounded-full bg-white border border-gray-300 text-gray-900 text-sm font-semibold hover:bg-gray-100">
+                <button
+                  onClick={() => {
+                    alert("Bulk assign feature coming soon. Backend integration needed.");
+                  }}
+                  className="px-3 py-1 rounded-full bg-white border border-gray-300 text-gray-900 text-sm font-semibold hover:bg-gray-100"
+                  title="Coming soon"
+                >
                   Assign
                 </button>
-                <button className="px-3 py-1 rounded-full bg-white border border-gray-300 text-gray-900 text-sm font-semibold hover:bg-gray-100">
+                <button
+                  onClick={() => {
+                    const selectedInvoices = paginatedInvoices.filter((inv) =>
+                      selectedRows.has(inv.id),
+                    );
+                    const toExport = selectedInvoices.map((inv) => ({
+                      id: inv.id,
+                      invoice_number: inv.invoice_number,
+                      account_id: inv.account_id,
+                      amount: inv.amount,
+                      issue_date: inv.issue_date,
+                      due_date: inv.due_date,
+                      status: inv.status,
+                    }));
+                    exportInvoicesAsCSV(
+                      toExport,
+                      `invoices-selected-${new Date().toISOString().split("T")[0]}.csv`,
+                    );
+                  }}
+                  className="px-3 py-1 rounded-full bg-white border border-gray-300 text-gray-900 text-sm font-semibold hover:bg-gray-100"
+                >
                   Export
                 </button>
               </div>
@@ -918,6 +871,7 @@ function InvoicesPage() {
               <AppButton
                 variant="secondary"
                 onClick={async () => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   await (invoicesQuery as any).refetch();
                 }}
                 className="mt-4"
@@ -931,17 +885,23 @@ function InvoicesPage() {
             </div>
           ) : isNoResults ? (
             <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-              <p className="text-sm font-semibold text-gray-900">No invoices match these filters</p>
-              <button
-                onClick={() => {
-                  setActiveFilters({});
-                  setSearchInput("");
-                  setCurrentPage(1);
-                }}
-                className="mt-4 rounded-full bg-green-700 text-white px-4 py-2 text-sm font-semibold hover:bg-green-800"
-              >
-                Clear filters
-              </button>
+              <p className="text-sm font-semibold text-gray-900">
+                {viewMode === "collections"
+                  ? "No overdue invoices to collect."
+                  : "No invoices match these filters"}
+              </p>
+              {viewMode !== "collections" && (
+                <button
+                  onClick={() => {
+                    setActiveFilters({});
+                    setSearchInput("");
+                    setCurrentPage(1);
+                  }}
+                  className="mt-4 rounded-full bg-green-700 text-white px-4 py-2 text-sm font-semibold hover:bg-green-800"
+                >
+                  Clear filters
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -957,24 +917,36 @@ function InvoicesPage() {
                           className="w-4 h-4"
                         />
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
-                        Account
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
-                        Invoice
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-600">
-                        Amount
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
-                        Invoice date
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
-                        Due date
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
-                        Status
-                      </th>
+                      {visibleColumns.has("account") && (
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
+                          Account
+                        </th>
+                      )}
+                      {visibleColumns.has("invoice") && (
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
+                          Invoice
+                        </th>
+                      )}
+                      {visibleColumns.has("amount") && (
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-600">
+                          Amount
+                        </th>
+                      )}
+                      {visibleColumns.has("invoiceDate") && (
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
+                          Invoice date
+                        </th>
+                      )}
+                      {visibleColumns.has("dueDate") && (
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
+                          Due date
+                        </th>
+                      )}
+                      {visibleColumns.has("status") && (
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
+                          Status
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -1003,30 +975,42 @@ function InvoicesPage() {
                               className="w-4 h-4"
                             />
                           </td>
-                          <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                            {accountNames.get(invoice.account_id) ?? invoice.account_id}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-green-700 font-semibold">
-                            {invoice.invoice_number}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm text-gray-900">
-                            {formatINR(String(invoice.amount))}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {formatShortDate(invoice.issue_date)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {formatShortDate(invoice.due_date)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                                colors.bg
-                              } ${colors.text}`}
-                            >
-                              {invoice.status}
-                            </span>
-                          </td>
+                          {visibleColumns.has("account") && (
+                            <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                              {accountNames.get(invoice.account_id) ?? invoice.account_id}
+                            </td>
+                          )}
+                          {visibleColumns.has("invoice") && (
+                            <td className="px-4 py-3 text-sm text-green-700 font-semibold">
+                              {invoice.invoice_number}
+                            </td>
+                          )}
+                          {visibleColumns.has("amount") && (
+                            <td className="px-4 py-3 text-right text-sm text-gray-900">
+                              {formatINR(String(invoice.amount))}
+                            </td>
+                          )}
+                          {visibleColumns.has("invoiceDate") && (
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {formatShortDate(invoice.issue_date)}
+                            </td>
+                          )}
+                          {visibleColumns.has("dueDate") && (
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {formatShortDate(invoice.due_date)}
+                            </td>
+                          )}
+                          {visibleColumns.has("status") && (
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                                  colors.bg
+                                } ${colors.text}`}
+                              >
+                                {invoice.status}
+                              </span>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}

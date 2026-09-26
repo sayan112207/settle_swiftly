@@ -69,7 +69,8 @@ export const importInvoices = createServerFn({ method: "POST" })
 
 export const getInvoices = createServerFn({ method: "GET" })
   .validator(importInvoicesSchema.pick({ org_id: true }))
-  .handler(async ({ data }) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  .handler(async ({ data }): Promise<any[]> => {
     const supabase = getUserSupabase();
     const { data: invoices, error } = await supabase
       .from("invoices")
