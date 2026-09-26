@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { AppButton } from "@/components/app/AppButton";
@@ -70,10 +70,13 @@ export function skippedLabel(
  * undo action for any of that, and the Cadence tab is shown but inert since
  * no such page exists yet.
  */
+const SKIPPED_PAGE_SIZE = 5;
+
 function ChasingPage() {
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [skippedIds, setSkippedIds] = useState<ReadonlySet<string>>(new Set());
+  const [skippedPage, setSkippedPage] = useState(0);
   const [approveAllOpen, setApproveAllOpen] = useState(false);
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
@@ -87,6 +90,22 @@ function ChasingPage() {
 
   const allItems = queueQuery.data?.items ?? [];
   const items = allItems.filter((item) => !skippedIds.has(item.invoice_id));
+  const skippedItems = allItems.filter((item) => skippedIds.has(item.invoice_id));
+
+  const maxPage = Math.ceil(skippedItems.length / SKIPPED_PAGE_SIZE) - 1;
+  const currentPage = Math.min(skippedPage, Math.max(0, maxPage));
+
+  useEffect(() => {
+    if (currentPage !== skippedPage) {
+      setSkippedPage(currentPage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skippedItems.length]);
+
+  const paginatedSkipped = skippedItems.slice(
+    currentPage * SKIPPED_PAGE_SIZE,
+    (currentPage + 1) * SKIPPED_PAGE_SIZE,
+  );
 
   async function invalidateQueues() {
     await Promise.all([
@@ -98,6 +117,7 @@ function ChasingPage() {
   const approveMutation = useMutation({
     mutationFn: (invoiceIds: readonly string[]) => postChases(invoiceIds),
     onSuccess: async (result, invoiceIds) => {
+      const isBulk = invoiceIds.length > 1;
       setPendingIds((current) => {
         const next = new Set(current);
         for (const id of invoiceIds) next.delete(id);
@@ -108,6 +128,9 @@ function ChasingPage() {
         for (const id of invoiceIds) delete next[id];
         return next;
       });
+      if (isBulk) {
+        setBulkError(null);
+      }
       await invalidateQueues();
       if (result.skipped.length === 0) {
         const word = result.queued === 1 ? "invoice" : "invoices";
@@ -117,6 +140,7 @@ function ChasingPage() {
       toast(`${result.queued} queued. Skipped ${skippedLabel(result.skipped, allItems)}.`);
     },
     onError: (error, invoiceIds) => {
+      const isBulk = invoiceIds.length > 1;
       setPendingIds((current) => {
         const next = new Set(current);
         for (const id of invoiceIds) next.delete(id);
@@ -125,11 +149,15 @@ function ChasingPage() {
       const fallback =
         invoiceIds.length === 1 ? "Couldn't queue that chase." : "Couldn't queue those chases.";
       const message = userFacingMessage(error, fallback);
-      setItemErrors((current) => {
-        const next = { ...current };
-        for (const id of invoiceIds) next[id] = message;
-        return next;
-      });
+      if (isBulk) {
+        setBulkError(message);
+      } else {
+        setItemErrors((current) => {
+          const next = { ...current };
+          for (const id of invoiceIds) next[id] = message;
+          return next;
+        });
+      }
     },
   });
 
@@ -143,14 +171,7 @@ function ChasingPage() {
     const invoiceIds = items.map((item) => item.invoice_id);
     setBulkError(null);
     setPendingIds((current) => new Set([...current, ...invoiceIds]));
-    approveMutation.mutate(invoiceIds, {
-      onError: (error) => {
-        setBulkError(userFacingMessage(error, "Couldn't queue those chases."));
-      },
-      onSuccess: () => {
-        setBulkError(null);
-      },
-    });
+    approveMutation.mutate(invoiceIds);
   }
 
   function skipOne(invoiceId: string) {
@@ -229,6 +250,58 @@ function ChasingPage() {
               onSkip={() => skipOne(item.invoice_id)}
             />
           ))}
+        </div>
+      ) : null}
+
+      {skippedItems.length > 0 ? (
+        <div className="space-y-3">
+          <h2 className="text-section font-bold tracking-tight text-fg">
+            Skipped ({skippedItems.length})
+          </h2>
+          {paginatedSkipped.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {paginatedSkipped.map((item) => (
+                <div
+                  key={item.invoice_id}
+                  className="rounded-card border border-hairline bg-card px-6 py-3"
+                >
+                  <div className="text-body font-semibold text-fg-soft">
+                    {item.account_name} · {item.invoice_number}
+                  </div>
+                  <div className="tnum mt-0.5 text-prose text-fg-soft">
+                    {formatDays(item.days_overdue)} overdue · {formatINR(item.amount_outstanding)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {skippedItems.length > SKIPPED_PAGE_SIZE ? (
+            <div className="flex items-center justify-between gap-2 pt-2">
+              <span className="text-prose text-fg-soft">
+                Showing {currentPage * SKIPPED_PAGE_SIZE + 1}–
+                {Math.min((currentPage + 1) * SKIPPED_PAGE_SIZE, skippedItems.length)} of{" "}
+                {skippedItems.length}
+              </span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setSkippedPage(Math.max(0, currentPage - 1))}
+                  disabled={currentPage === 0}
+                  className="rounded-lg border border-hairline bg-card px-2 py-1 text-prose font-semibold text-fg-soft hover:text-fg disabled:opacity-50"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSkippedPage(currentPage + 1)}
+                  disabled={currentPage >= maxPage}
+                  className="rounded-lg border border-hairline bg-card px-2 py-1 text-prose font-semibold text-fg-soft hover:text-fg disabled:opacity-50"
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
