@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { ComingSoonNotification } from "@/components/app/ComingSoonNotification";
 
+/** Collapsible section for invoices on hold during manual payment reconciliation. Placeholder implementation; backend support for invoice holds is coming soon. */
 export function HeldInvoicesSection() {
   const [isExpanded, setIsExpanded] = useState(false);
 

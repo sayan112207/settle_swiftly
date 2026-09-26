@@ -7,6 +7,7 @@ interface PaymentTriageTabsProps {
 
 type TabId = "confident" | "needs_review" | "unmatched";
 
+/** Payment categorization tabs for filtering by confidence level: confident, needs-review, or unmatched. Shows placeholder counts; backend categorization logic is coming soon. */
 export function PaymentTriageTabs({ totalPayments }: PaymentTriageTabsProps) {
   const [selectedTab, setSelectedTab] = useState<TabId>("confident");
   const [showComingSoon, setShowComingSoon] = useState(false);

@@ -7,6 +7,7 @@ interface ComingSoonNotificationProps {
   onDismiss?: () => void;
 }
 
+/** Placeholder notification for unimplemented features. Supports three variants: badge (minimal label), toast (warning box with dismiss), and inline (default card style). */
 export function ComingSoonNotification({
   message,
   variant = "inline",

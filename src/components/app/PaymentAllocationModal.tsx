@@ -30,6 +30,7 @@ interface PaymentAllocationModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/** Modal for allocating received payments to unpaid invoices with TDS section selection and balance tracking. Prevents over-allocation and auto-fills oldest invoices first. Backend persistence is coming soon. */
 export function PaymentAllocationModal({
   open,
   payment,

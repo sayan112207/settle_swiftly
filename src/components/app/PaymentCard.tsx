@@ -14,6 +14,7 @@ interface PaymentCardProps {
   onViewSplit?: () => void;
 }
 
+/** Displays a received payment with date, amount, reference, applied-to status, and allocation details. Selection state highlights the card for keyboard navigation (Enter triggers allocate). All advanced actions show coming-soon placeholders. */
 export function PaymentCard({
   payment,
   isSelected = false,

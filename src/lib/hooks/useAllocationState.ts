@@ -23,11 +23,13 @@ export interface AllocationBalance {
   receivedCents: bigint;
 }
 
+/** Converts rupees.paise string format to cents as bigint. Handles decimals by padding paise to 2 digits, e.g., "100" → 10000n cents. */
 function moneyToCents(value: string): bigint {
   const [rupees, paise = "0"] = value.split(".");
   return BigInt(rupees ?? "0") * 100n + BigInt(paise.padEnd(2, "0").slice(0, 2));
 }
 
+/** Converts cents (bigint) back to rupees.paise format, preserving sign and padding paise to 2 digits, e.g., 10000n → "100.00". */
 function centsToMoney(cents: bigint): string {
   const sign = cents < 0n ? "-" : "";
   const abs = cents < 0n ? -cents : cents;
@@ -36,6 +38,7 @@ function centsToMoney(cents: bigint): string {
   return `${sign}${rupees}.${paise.toString().padStart(2, "0")}`;
 }
 
+/** Manages payment allocation state: invoice rows, selected/allocated amounts, TDS section and percentage. Provides auto-fill oldest-first and balance tracking (allocated, remaining, over-allocated). Returns all state and helpers including computed balance. */
 export function useAllocationState(
   receivedAmount: string,
   initialAllocations?: Array<{ invoiceId: string; invoiceNumber: string; amount: string }>,
@@ -185,6 +188,7 @@ export function useAllocationState(
   };
 }
 
+/** Calculates allocation balance by summing row allocations and deducting TDS (if applicable). Returns allocated and remaining amounts as strings, whether over-allocated, and raw cent values for precision. */
 export function getBalance(
   receivedAmount: string,
   rows: AllocationRow[],

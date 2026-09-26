@@ -1,5 +1,6 @@
 import { AlertCircle } from "lucide-react";
 
+/** Warning banner for stale payment detection feature placeholder. Backend support for automated payment review flagging is coming soon. */
 export function PaymentReviewBanner() {
   return (
     <div className="flex items-center gap-3 rounded-card border border-warn-edge bg-warn-tint px-4 py-3">
