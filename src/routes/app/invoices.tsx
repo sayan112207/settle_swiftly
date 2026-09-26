@@ -319,6 +319,12 @@ function InvoicesPage() {
     [filteredInvoices.length, pageSize],
   );
 
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
   const paginatedInvoices = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     const end = start + pageSize;
@@ -333,13 +339,20 @@ function InvoicesPage() {
   // Metrics
   const metrics = useMemo(() => {
     if (filteredInvoices.length === 0) return { outstanding: 0, overdue: 0, dueWeek: 0 };
-    const outstanding = filteredInvoices.reduce((sum, inv) => sum + inv.amount, 0);
-    const overdue = filteredInvoices
+    const unpaid = filteredInvoices.filter(
+      (inv) => !["paid", "Paid", "written_off", "Written off"].includes(inv.status),
+    );
+    const outstanding = unpaid.reduce((sum, inv) => sum + inv.amount, 0);
+    const overdue = unpaid
       .filter((inv) => getDaysOverdue(inv.due_date) > 0)
       .reduce((sum, inv) => sum + inv.amount, 0);
-    const dueWeek = filteredInvoices
+    const dueWeek = unpaid
       .filter((inv) => {
-        const days = getDaysOverdue(inv.due_date);
+        const dueDate = new Date(`${inv.due_date}T12:00:00+05:30`);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffMs = dueDate.getTime() - today.getTime();
+        const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
         return days >= 0 && days <= 7;
       })
       .reduce((sum, inv) => sum + inv.amount, 0);
@@ -771,40 +784,6 @@ function InvoicesPage() {
             </button>
           </div>
 
-          {/* Active Filter Chips */}
-          {filterChips.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              {filterChips.map((chip) => (
-                <div
-                  key={chip.key}
-                  className="flex items-center gap-2 rounded-full bg-gray-100 border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-900"
-                >
-                  {chip.label}
-                  <button
-                    onClick={() => {
-                      const newFilters = { ...activeFilters };
-                      delete newFilters[chip.key as keyof ActiveFilters];
-                      setActiveFilters(newFilters);
-                      setCurrentPage(1);
-                    }}
-                    className="text-gray-600 hover:text-gray-900"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              <button
-                onClick={() => {
-                  setActiveFilters({});
-                  setCurrentPage(1);
-                }}
-                className="text-xs font-semibold text-gray-600 hover:text-gray-900"
-              >
-                Clear all
-              </button>
-            </div>
-          )}
-
           {/* Bulk Action Bar */}
           {selectedRows.size > 0 && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3 flex items-center justify-between">
@@ -833,7 +812,7 @@ function InvoicesPage() {
                 </button>
                 <button
                   onClick={() => {
-                    const selectedInvoices = paginatedInvoices.filter((inv) =>
+                    const selectedInvoices = filteredInvoices.filter((inv) =>
                       selectedRows.has(inv.id),
                     );
                     const toExport = selectedInvoices.map((inv) => ({
@@ -1052,7 +1031,7 @@ function InvoicesPage() {
                       ‹
                     </button>
                     {Array.from({ length: totalPages }, (_, i) => i + 1)
-                      .slice(Math.max(0, currentPage - 2), Math.min(totalPages, currentPage + 1))
+                      .slice(Math.max(0, currentPage - 2), Math.max(3, currentPage + 1))
                       .map((page) => (
                         <button
                           key={page}
