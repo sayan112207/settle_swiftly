@@ -37,6 +37,39 @@ function getAgingBucket(daysOverdue: number): string {
   return "90+ days";
 }
 
+function isDateInRange(dateStr: string, bucket: string): boolean {
+  const date = new Date(`${dateStr}T12:00:00+05:30`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const oneWeekAgo = new Date(today);
+  oneWeekAgo.setDate(today.getDate() - 7);
+
+  const oneMonthAgo = new Date(today);
+  oneMonthAgo.setMonth(today.getMonth() - 1);
+
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setDate(today.getDate() - 30);
+
+  const quarterStart = new Date(today);
+  const quarter = Math.floor(today.getMonth() / 3);
+  quarterStart.setMonth(quarter * 3, 1);
+
+  if (bucket === "Today") return date.toDateString() === today.toDateString();
+  if (bucket === "This week") return date >= oneWeekAgo && date <= today;
+  if (bucket === "This month")
+    return date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
+  if (bucket === "Last month") {
+    const lastMonth = new Date(today);
+    lastMonth.setMonth(today.getMonth() - 1);
+    return (
+      date.getMonth() === lastMonth.getMonth() && date.getFullYear() === lastMonth.getFullYear()
+    );
+  }
+  if (bucket === "This quarter") return date >= quarterStart && date <= today;
+  return false;
+}
+
 function getStatusColor(status: string) {
   const s = status.toLowerCase();
   if (s === "paid" || s === "partially_paid") {
@@ -63,6 +96,8 @@ interface ActiveFilters {
   ageing?: string;
   account?: string;
   amount?: string;
+  invoiceDate?: string;
+  dueDate?: string;
 }
 
 const SAVED_VIEWS = [
@@ -71,8 +106,6 @@ const SAVED_VIEWS = [
   { label: "My overdue invoices", pinned: false },
   { label: "Outstanding > ₹1L", pinned: false },
 ];
-
-const QUICK_FILTER_OPTIONS = ["Status", "Ageing", "Account", "Amount", "Invoice date", "Due date"];
 
 const SORT_OPTIONS = [
   "Oldest overdue first",
@@ -83,6 +116,14 @@ const SORT_OPTIONS = [
 ];
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
+
+const AMOUNT_BUCKETS = [
+  { label: "< ₹10k", key: "<10k", min: 0, max: 10000 },
+  { label: "₹10k–50k", key: "10k-50k", min: 10000, max: 50000 },
+  { label: "₹50k–₹1L", key: "50k-1L", min: 50000, max: 100000 },
+  { label: "₹1L–₹5L", key: "1L-5L", min: 100000, max: 500000 },
+  { label: "> ₹5L", key: ">5L", min: 500000, max: Infinity },
+];
 
 function InvoicesPage() {
   const { orgs } = Route.useRouteContext();
@@ -119,6 +160,7 @@ function InvoicesPage() {
   const [sortBy, setSortBy] = useState<string>("Oldest overdue first");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [openQuickFilter, setOpenQuickFilter] = useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
   const [optionalColumns, setOptionalColumns] = useState<Set<string>>(new Set());
@@ -131,11 +173,24 @@ function InvoicesPage() {
       if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node)) {
         setFiltersOpen(false);
         setColumnsOpen(false);
+        setOpenQuickFilter(null);
+      }
+    };
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setFiltersOpen(false);
+        setColumnsOpen(false);
+        setOpenQuickFilter(null);
       }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
   }, []);
 
   // Get unique filter values
@@ -153,20 +208,25 @@ function InvoicesPage() {
     return Array.from(accounts).sort();
   }, [invoicesQuery.data, accountNames]);
 
+  // Collections base dataset (unpaid AND overdue)
+  const collectionsBase = useMemo(() => {
+    if (!invoicesQuery.data) return [];
+    return invoicesQuery.data.filter((inv) => {
+      const isUnpaid = !["paid", "Paid", "written_off", "Written off"].includes(inv.status);
+      const dueDate = new Date(`${inv.due_date}T12:00:00+05:30`);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const isOverdue = dueDate < today;
+      return isUnpaid && isOverdue;
+    });
+  }, [invoicesQuery.data]);
+
   // Filter and sort logic
   const filteredInvoices = useMemo(() => {
     if (!invoicesQuery.data) return [];
 
-    let result = invoicesQuery.data;
-
-    // Collections view
-    if (viewMode === "collections") {
-      result = result.filter((inv) => {
-        const isUnpaid = !["paid", "Paid", "written_off", "Written off"].includes(inv.status);
-        const isOverdue = getDaysOverdue(inv.due_date) > 0;
-        return isUnpaid && isOverdue;
-      });
-    }
+    let result =
+      viewMode === "collections" && collectionsBase ? collectionsBase : invoicesQuery.data;
 
     // Search filter
     if (searchInput.trim()) {
@@ -180,7 +240,7 @@ function InvoicesPage() {
       });
     }
 
-    // Apply active filters
+    // Apply active filters with AND logic
     if (activeFilters["status"]) {
       result = result.filter((inv) => inv.status === activeFilters["status"]);
     }
@@ -196,11 +256,16 @@ function InvoicesPage() {
       );
     }
     if (activeFilters["amount"]) {
-      result = result.filter((inv) => {
-        if (activeFilters["amount"] === "Below ₹1L") return inv.amount < 100000;
-        if (activeFilters["amount"] === "Above ₹1L") return inv.amount >= 100000;
-        return true;
-      });
+      const bucket = AMOUNT_BUCKETS.find((b) => b.key === activeFilters["amount"]);
+      if (bucket) {
+        result = result.filter((inv) => inv.amount >= bucket.min && inv.amount < bucket.max);
+      }
+    }
+    if (activeFilters["invoiceDate"]) {
+      result = result.filter((inv) => isDateInRange(inv.issue_date, activeFilters["invoiceDate"]!));
+    }
+    if (activeFilters["dueDate"]) {
+      result = result.filter((inv) => isDateInRange(inv.due_date, activeFilters["dueDate"]!));
     }
 
     // Sort
@@ -228,7 +293,15 @@ function InvoicesPage() {
     });
 
     return sortedResult;
-  }, [invoicesQuery.data, viewMode, searchInput, activeFilters, sortBy, accountNames]);
+  }, [
+    invoicesQuery.data,
+    viewMode,
+    searchInput,
+    activeFilters,
+    sortBy,
+    accountNames,
+    collectionsBase,
+  ]);
 
   // Pagination
   const totalPages = useMemo(
@@ -242,15 +315,10 @@ function InvoicesPage() {
     return filteredInvoices.slice(start, end);
   }, [filteredInvoices, currentPage, pageSize]);
 
-  // Collections count
+  // Collections count (for badge)
   const collectionsCount = useMemo(() => {
-    if (!invoicesQuery.data) return 0;
-    return invoicesQuery.data.filter((inv) => {
-      const isUnpaid = !["paid", "Paid", "written_off", "Written off"].includes(inv.status);
-      const isOverdue = getDaysOverdue(inv.due_date) > 0;
-      return isUnpaid && isOverdue;
-    }).length;
-  }, [invoicesQuery.data]);
+    return collectionsBase.length;
+  }, [collectionsBase]);
 
   // Metrics
   const metrics = useMemo(() => {
@@ -306,10 +374,38 @@ function InvoicesPage() {
 
   const filterChips = Object.entries(activeFilters)
     .filter(([, value]) => value)
-    .map(([key, value]) => ({
-      label: value as string,
-      key,
-    }));
+    .map(([key, value]) => {
+      let displayLabel = value as string;
+      if (key === "amount") {
+        const bucket = AMOUNT_BUCKETS.find((b) => b.key === value);
+        displayLabel = bucket?.label ?? value;
+      }
+      return {
+        label: displayLabel,
+        key,
+      };
+    });
+
+  const handleQuickFilterSelect = (filterName: string, value: string) => {
+    const newFilters = { ...activeFilters };
+    const filterKey =
+      filterName.toLowerCase() === "ageing"
+        ? "ageing"
+        : filterName.toLowerCase() === "invoice date"
+          ? "invoiceDate"
+          : filterName.toLowerCase() === "due date"
+            ? "dueDate"
+            : filterName.toLowerCase();
+
+    if (filterKey === "ageing" || filterKey === "invoiceDate" || filterKey === "dueDate") {
+      newFilters[filterKey as keyof ActiveFilters] = value;
+    } else {
+      newFilters[filterKey as keyof ActiveFilters] = value;
+    }
+    setActiveFilters(newFilters);
+    setOpenQuickFilter(null);
+    setCurrentPage(1);
+  };
 
   return (
     <div className="space-y-4">
@@ -414,19 +510,110 @@ function InvoicesPage() {
               />
             </div>
 
-            {/* Quick Filters */}
-            {QUICK_FILTER_OPTIONS.map((filter) => (
-              <button
-                key={filter}
-                className="flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100"
-              >
-                {filter} <ChevronDown width="12" height="12" />
-              </button>
+            {/* Quick Filter Dropdowns */}
+            {["Status", "Ageing", "Account", "Amount", "Invoice date", "Due date"].map((filter) => (
+              <div key={filter} className="relative">
+                <button
+                  onClick={() => {
+                    setOpenQuickFilter(openQuickFilter === filter ? null : filter);
+                    setFiltersOpen(false);
+                    setColumnsOpen(false);
+                  }}
+                  className={`flex items-center gap-1 rounded-full px-3 py-2 text-sm font-semibold transition-all ${
+                    openQuickFilter === filter
+                      ? "border-green-200 bg-green-50 text-green-700 border"
+                      : "border border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
+                  }`}
+                >
+                  {filter}
+                  <ChevronDown
+                    width="12"
+                    height="12"
+                    className={`transition-transform ${
+                      openQuickFilter === filter ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {openQuickFilter === filter && (
+                  <div className="absolute top-10 left-0 z-20 min-w-max rounded-lg border border-gray-200 bg-white shadow-lg">
+                    {filter === "Status" &&
+                      uniqueStatuses.map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => handleQuickFilterSelect(filter, status)}
+                          className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                        >
+                          {status}
+                        </button>
+                      ))}
+                    {filter === "Ageing" &&
+                      ["Not yet due", "1–30 days", "31–60 days", "61–90 days", "90+ days"].map(
+                        (bucket) => (
+                          <button
+                            key={bucket}
+                            onClick={() => handleQuickFilterSelect(filter, bucket)}
+                            className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                          >
+                            {bucket}
+                          </button>
+                        ),
+                      )}
+                    {filter === "Account" &&
+                      uniqueAccounts.map((account) => (
+                        <button
+                          key={account}
+                          onClick={() => handleQuickFilterSelect(filter, account)}
+                          className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100 whitespace-nowrap"
+                        >
+                          {account}
+                        </button>
+                      ))}
+                    {filter === "Amount" &&
+                      AMOUNT_BUCKETS.map((bucket) => (
+                        <button
+                          key={bucket.key}
+                          onClick={() => handleQuickFilterSelect(filter, bucket.key)}
+                          className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                        >
+                          {bucket.label}
+                        </button>
+                      ))}
+                    {filter === "Invoice date" &&
+                      ["Today", "This week", "This month", "Last month", "This quarter"].map(
+                        (bucket) => (
+                          <button
+                            key={bucket}
+                            onClick={() => handleQuickFilterSelect(filter, bucket)}
+                            className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                          >
+                            {bucket}
+                          </button>
+                        ),
+                      )}
+                    {filter === "Due date" &&
+                      ["Today", "This week", "This month", "Last month", "This quarter"].map(
+                        (bucket) => (
+                          <button
+                            key={bucket}
+                            onClick={() => handleQuickFilterSelect(filter, bucket)}
+                            className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                          >
+                            {bucket}
+                          </button>
+                        ),
+                      )}
+                  </div>
+                )}
+              </div>
             ))}
 
             {/* More Filters */}
             <button
-              onClick={() => setFiltersOpen(!filtersOpen)}
+              onClick={() => {
+                setFiltersOpen(!filtersOpen);
+                setOpenQuickFilter(null);
+                setColumnsOpen(false);
+              }}
               className={`rounded-full px-3 py-2 text-sm font-semibold ${
                 filtersOpen
                   ? "border border-green-200 bg-green-50 text-green-700"
@@ -457,13 +644,17 @@ function InvoicesPage() {
             {/* Columns */}
             <div className="relative">
               <button
-                onClick={() => setColumnsOpen(!columnsOpen)}
+                onClick={() => {
+                  setColumnsOpen(!columnsOpen);
+                  setOpenQuickFilter(null);
+                  setFiltersOpen(false);
+                }}
                 className="rounded-full border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100"
               >
                 Columns
               </button>
               {columnsOpen && (
-                <div className="absolute top-10 right-0 z-10 w-48 rounded-lg border border-gray-200 bg-white shadow-lg p-3">
+                <div className="absolute top-10 right-0 z-20 w-48 rounded-lg border border-gray-200 bg-white shadow-lg p-3">
                   <div className="text-xs font-semibold uppercase text-gray-600 mb-2">
                     Optional columns
                   </div>
@@ -493,118 +684,6 @@ function InvoicesPage() {
               )}
             </div>
           </div>
-
-          {/* More Filters Panel */}
-          {filtersOpen && (
-            <div className="bg-white border border-gray-200 rounded-lg p-4 mb-3">
-              <div className="grid grid-cols-4 gap-4">
-                <div>
-                  <label className="text-xs font-semibold uppercase text-gray-600 mb-2 block">
-                    Status
-                  </label>
-                  <select
-                    value={activeFilters.status || ""}
-                    onChange={(e) => {
-                      const newFilters = { ...activeFilters };
-                      if (e.target.value) {
-                        newFilters.status = e.target.value;
-                      } else {
-                        delete newFilters.status;
-                      }
-                      setActiveFilters(newFilters);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm"
-                  >
-                    <option value="">Any status</option>
-                    {uniqueStatuses.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold uppercase text-gray-600 mb-2 block">
-                    Ageing
-                  </label>
-                  <select
-                    value={activeFilters.ageing || ""}
-                    onChange={(e) => {
-                      const newFilters = { ...activeFilters };
-                      if (e.target.value) {
-                        newFilters.ageing = e.target.value;
-                      } else {
-                        delete newFilters.ageing;
-                      }
-                      setActiveFilters(newFilters);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm"
-                  >
-                    <option value="">Any ageing</option>
-                    <option value="Not yet due">Not yet due</option>
-                    <option value="1–30 days">1–30 days</option>
-                    <option value="31–60 days">31–60 days</option>
-                    <option value="61–90 days">61–90 days</option>
-                    <option value="90+ days">90+ days</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold uppercase text-gray-600 mb-2 block">
-                    Account
-                  </label>
-                  <select
-                    value={activeFilters.account || ""}
-                    onChange={(e) => {
-                      const newFilters = { ...activeFilters };
-                      if (e.target.value) {
-                        newFilters.account = e.target.value;
-                      } else {
-                        delete newFilters.account;
-                      }
-                      setActiveFilters(newFilters);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm"
-                  >
-                    <option value="">Any account</option>
-                    {uniqueAccounts.map((a) => (
-                      <option key={a} value={a}>
-                        {a}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold uppercase text-gray-600 mb-2 block">
-                    Amount
-                  </label>
-                  <select
-                    value={activeFilters.amount || ""}
-                    onChange={(e) => {
-                      const newFilters = { ...activeFilters };
-                      if (e.target.value) {
-                        newFilters.amount = e.target.value;
-                      } else {
-                        delete newFilters.amount;
-                      }
-                      setActiveFilters(newFilters);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm"
-                  >
-                    <option value="">Any amount</option>
-                    <option value="Below ₹1L">Below ₹1L</option>
-                    <option value="Above ₹1L">Above ₹1L</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Saved Views */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -798,7 +877,9 @@ function InvoicesPage() {
                           </td>
                           <td className="px-4 py-3">
                             <span
-                              className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${colors.bg} ${colors.text}`}
+                              className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                                colors.bg
+                              } ${colors.text}`}
                             >
                               {invoice.status}
                             </span>
