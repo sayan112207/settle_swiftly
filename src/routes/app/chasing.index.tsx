@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, useIsMutating } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import {
   postChases,
 } from "@/lib/services/dashboard";
 import type { ChaseQueueItem, ChaseSkipped } from "@/lib/schemas/dashboard";
+import { useChasingContext } from "./chasing";
 
 export const Route = createFileRoute("/app/chasing/")({
   head: () => ({ meta: [{ title: `Chasing — ${PRODUCT_NAME}` }] }),
@@ -53,8 +54,9 @@ export function skippedLabel(
 /** Approval queue page: displays chase queue items with approve/skip actions. */
 function ApprovalQueuePage() {
   const queryClient = useQueryClient();
+  const { skippedIds, setSkippedIds } = useChasingContext();
+  const bulkMutating = useIsMutating({ mutationKey: ["chasing", "approve-all"] });
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [skippedIds, setSkippedIds] = useState<ReadonlySet<string>>(new Set());
   const [skippedPage, setSkippedPage] = useState(0);
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
@@ -135,7 +137,7 @@ function ApprovalQueuePage() {
   }
 
   function skipOne(invoiceId: string) {
-    setSkippedIds((current) => new Set(current).add(invoiceId));
+    setSkippedIds((current) => new Set([...current, invoiceId]) as ReadonlySet<string>);
     if (expandedId === invoiceId) setExpandedId(null);
   }
 
@@ -177,6 +179,7 @@ function ApprovalQueuePage() {
               error={itemErrors[item.invoice_id]}
               onApprove={() => approveOne(item.invoice_id)}
               onSkip={() => skipOne(item.invoice_id)}
+              bulkMutating={bulkMutating > 0}
             />
           ))}
         </div>
@@ -271,6 +274,7 @@ function ChaseCard({
   error,
   onApprove,
   onSkip,
+  bulkMutating,
 }: {
   item: ChaseQueueItem;
   expanded: boolean;
@@ -279,6 +283,7 @@ function ChaseCard({
   error: string | undefined;
   onApprove: () => void;
   onSkip: () => void;
+  bulkMutating: boolean;
 }) {
   const summary = (
     <div>
@@ -343,13 +348,19 @@ function ChaseCard({
       </div>
 
       <div className="mt-4 flex gap-2">
-        <AppButton variant="primary" onClick={onApprove} loading={sending}>
+        <AppButton
+          variant="primary"
+          onClick={onApprove}
+          loading={sending}
+          disabled={sending || bulkMutating}
+        >
           Approve
         </AppButton>
         <button
           type="button"
           onClick={onSkip}
-          className="rounded-pill px-1.5 py-2 text-body font-semibold text-fg-soft hover:text-fg"
+          disabled={bulkMutating}
+          className="rounded-pill px-1.5 py-2 text-body font-semibold text-fg-soft hover:text-fg disabled:opacity-50"
         >
           Skip this one
         </button>

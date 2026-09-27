@@ -38,7 +38,7 @@ function CadenceOverridesPage() {
       for (const account of accounts.items) {
         const detail = await getAccount(account.account_id);
         const settings = detail.settings;
-        if (settings.chase_mode !== "default") {
+        if (settings.chase_mode !== "default" || settings.send_window_mode !== "default") {
           const isStale =
             settings.chase_mode === "stopped" &&
             new Date(settings.archived_at || detail.updated_at).getTime() <
@@ -112,7 +112,25 @@ function CadenceOverridesPage() {
         </a>
       </div>
 
-      {isEmpty ? (
+      {accountDetailsQueries.isPending ? (
+        <div className="py-10 text-center text-prose text-fg-soft">Loading overrides...</div>
+      ) : accountDetailsQueries.isError ? (
+        <div className="flex flex-col items-start gap-3 py-10">
+          <p className="text-body font-semibold text-fg">
+            {accountDetailsQueries.error instanceof Error
+              ? accountDetailsQueries.error.message
+              : "Couldn't load overrides."}
+          </p>
+          <AppButton
+            variant="secondary"
+            onClick={() => {
+              void accountDetailsQueries.refetch();
+            }}
+          >
+            Retry
+          </AppButton>
+        </div>
+      ) : isEmpty ? (
         <div className="flex flex-col items-center gap-4 rounded-card border border-hairline bg-card p-14 text-center">
           <div className="space-y-2">
             <h2 className="text-section font-bold text-fg">

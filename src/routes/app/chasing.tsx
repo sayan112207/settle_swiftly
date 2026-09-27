@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { toast } from "sonner";
 
 import { AppButton } from "@/components/app/AppButton";
@@ -22,6 +22,24 @@ export const Route = createFileRoute("/app/chasing")({
 
 const CHASING_QUEUE_LIMIT = 50;
 const chasingQueueKey = ["dashboard", "chase-queue", "full"] as const;
+
+type ChasingContextValue = {
+  skippedIds: ReadonlySet<string>;
+  setSkippedIds: (
+    set: ReadonlySet<string> | ((prev: ReadonlySet<string>) => ReadonlySet<string>),
+  ) => void;
+};
+
+const ChasingContext = createContext<ChasingContextValue | undefined>(undefined);
+
+/** Access shared chasing state (skipped invoice IDs) from child components. */
+export function useChasingContext() {
+  const context = useContext(ChasingContext);
+  if (!context) {
+    throw new Error("useChasingContext must be used within ChasingLayout");
+  }
+  return context;
+}
 
 /** Extracts user-facing error message from API error or returns fallback. */
 function userFacingMessage(error: unknown, fallback: string): string {
@@ -50,6 +68,7 @@ function ChasingLayout() {
 
   const [approveAllOpen, setApproveAllOpen] = useState(false);
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
+  const [skippedIds, setSkippedIds] = useState<ReadonlySet<string>>(new Set());
   const [bulkError, setBulkError] = useState<string | null>(null);
 
   const queueQuery = useQuery({
@@ -70,6 +89,7 @@ function ChasingLayout() {
 
   const approveMutation = useMutation({
     mutationFn: (invoiceIds: readonly string[]) => postChases(invoiceIds),
+    mutationKey: ["chasing", "approve-all"],
     onSuccess: async (result) => {
       setPendingIds(new Set());
       setBulkError(null);
@@ -91,95 +111,105 @@ function ChasingLayout() {
 
   function approveAll() {
     setApproveAllOpen(false);
-    const invoiceIds = items.map((item) => item.invoice_id);
+    const validItems = items.filter((item) => !skippedIds.has(item.invoice_id));
+    const invoiceIds = validItems.map((item) => item.invoice_id);
     setBulkError(null);
     setPendingIds(new Set([...invoiceIds]));
     approveMutation.mutate(invoiceIds);
   }
 
-  const totalOutstanding = items.reduce((sum, item) => sum + Number(item.amount_outstanding), 0);
+  const validItems = items.filter((item) => !skippedIds.has(item.invoice_id));
+  const totalOutstanding = validItems.reduce(
+    (sum, item) => sum + Number(item.amount_outstanding),
+    0,
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-title font-bold tracking-tight text-fg">Chasing</h1>
-          <p className="mt-1 text-prose text-fg-soft">
-            Switch to automatic sending once you trust the queue.
-          </p>
-        </div>
-        {isApprovalQueue && !queueQuery.isPending && !queueQuery.isError && items.length > 0 && (
-          <AppButton
-            variant="primary"
-            onClick={() => setApproveAllOpen(true)}
-            disabled={pendingIds.size > 0}
-          >
-            Approve all {items.length}
-          </AppButton>
-        )}
-      </div>
-
-      <div
-        role="tablist"
-        aria-label="Chasing sections"
-        className="mb-5 flex gap-7 border-b border-hairline"
-      >
-        <a
-          href="/app/chasing"
-          role="tab"
-          aria-selected={isApprovalQueue}
-          className={`border-b-2 pb-3 text-body font-semibold ${
-            isApprovalQueue
-              ? "border-accent-line text-fg"
-              : "border-transparent text-fg-soft hover:text-fg"
-          }`}
-        >
-          Approval queue
-        </a>
-        <a
-          href="/app/chasing/cadence"
-          role="tab"
-          aria-selected={isCadence}
-          className={`border-b-2 pb-3 text-body font-semibold ${
-            isCadence
-              ? "border-accent-line text-fg"
-              : "border-transparent text-fg-soft hover:text-fg"
-          }`}
-        >
-          Cadence
-        </a>
-      </div>
-
-      {bulkError ? (
-        <div
-          role="alert"
-          className="flex items-center justify-between gap-3 rounded-card border border-danger-edge bg-danger-tint px-4 py-3"
-        >
-          <p className="text-body font-semibold text-danger">{bulkError}</p>
-        </div>
-      ) : null}
-
-      <Outlet />
-
-      <Dialog open={approveAllOpen} onOpenChange={setApproveAllOpen}>
-        <DialogContent className="rounded-card border-hairline bg-card p-5 sm:max-w-[440px]">
-          <DialogTitle className="text-section font-bold tracking-tight text-fg">
-            Queue {items.length} chases?
-          </DialogTitle>
-          <DialogDescription className="mt-2 text-prose font-normal text-fg-soft">
-            {items.length} {items.length === 1 ? "invoice" : "invoices"} ·{" "}
-            <span className="tnum">{formatINR(String(totalOutstanding))}</span> total value.
-          </DialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
-            <AppButton variant="text" onClick={() => setApproveAllOpen(false)}>
-              Cancel
-            </AppButton>
-            <AppButton variant="primary" onClick={approveAll} loading={approveMutation.isPending}>
-              Queue {items.length} chases
-            </AppButton>
+    <ChasingContext.Provider value={{ skippedIds, setSkippedIds }}>
+      <div className="space-y-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-title font-bold tracking-tight text-fg">Chasing</h1>
+            <p className="mt-1 text-prose text-fg-soft">
+              Switch to automatic sending once you trust the queue.
+            </p>
           </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+          {isApprovalQueue &&
+            !queueQuery.isPending &&
+            !queueQuery.isError &&
+            validItems.length > 0 && (
+              <AppButton
+                variant="primary"
+                onClick={() => setApproveAllOpen(true)}
+                disabled={pendingIds.size > 0}
+              >
+                Approve all {validItems.length}
+              </AppButton>
+            )}
+        </div>
+
+        <div
+          role="tablist"
+          aria-label="Chasing sections"
+          className="mb-5 flex gap-7 border-b border-hairline"
+        >
+          <a
+            href="/app/chasing"
+            role="tab"
+            aria-selected={isApprovalQueue}
+            className={`border-b-2 pb-3 text-body font-semibold ${
+              isApprovalQueue
+                ? "border-accent-line text-fg"
+                : "border-transparent text-fg-soft hover:text-fg"
+            }`}
+          >
+            Approval queue
+          </a>
+          <a
+            href="/app/chasing/cadence"
+            role="tab"
+            aria-selected={isCadence}
+            className={`border-b-2 pb-3 text-body font-semibold ${
+              isCadence
+                ? "border-accent-line text-fg"
+                : "border-transparent text-fg-soft hover:text-fg"
+            }`}
+          >
+            Cadence
+          </a>
+        </div>
+
+        {bulkError ? (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-3 rounded-card border border-danger-edge bg-danger-tint px-4 py-3"
+          >
+            <p className="text-body font-semibold text-danger">{bulkError}</p>
+          </div>
+        ) : null}
+
+        <Outlet />
+
+        <Dialog open={approveAllOpen} onOpenChange={setApproveAllOpen}>
+          <DialogContent className="rounded-card border-hairline bg-card p-5 sm:max-w-[440px]">
+            <DialogTitle className="text-section font-bold tracking-tight text-fg">
+              Queue {validItems.length} chases?
+            </DialogTitle>
+            <DialogDescription className="mt-2 text-prose font-normal text-fg-soft">
+              {validItems.length} {validItems.length === 1 ? "invoice" : "invoices"} ·{" "}
+              <span className="tnum">{formatINR(String(totalOutstanding))}</span> total value.
+            </DialogDescription>
+            <div className="mt-5 flex justify-end gap-2">
+              <AppButton variant="text" onClick={() => setApproveAllOpen(false)}>
+                Cancel
+              </AppButton>
+              <AppButton variant="primary" onClick={approveAll} loading={approveMutation.isPending}>
+                Queue {validItems.length} chases
+              </AppButton>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </ChasingContext.Provider>
   );
 }

@@ -7,7 +7,7 @@ import { AppButton } from "@/components/app/AppButton";
 import { CadenceStepEditor } from "@/components/app/CadenceStepEditor";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useUpdateChasingSettings } from "@/lib/queries/account-detail";
-import { getAccounts, getAccount } from "@/lib/services/accounts";
+import { accountsQueryKeys, getAccounts, getAccount } from "@/lib/services/accounts";
 import { chaseStopReasonSchema, weekdaySchema } from "@/lib/schemas/accounts";
 import type { CadenceStep, ChaseMode, ChaseStopReason, Weekday } from "@/lib/schemas/accounts";
 
@@ -64,7 +64,9 @@ function CadencePage() {
   });
 
   const accountQuery = useQuery({
-    queryKey: ["account-detail", selectedAccountId],
+    queryKey: selectedAccountId
+      ? accountsQueryKeys.detail(selectedAccountId)
+      : ["account-detail-disabled"],
     queryFn: () => (selectedAccountId ? getAccount(selectedAccountId) : null),
     enabled: selectedAccountId !== null,
   });
@@ -251,7 +253,23 @@ function CadencePage() {
         </a>
       </div>
 
-      {selectedAccountId && !s ? (
+      {selectedAccountId && accountQuery.isError ? (
+        <div className="flex flex-col items-start gap-3 py-10">
+          <p className="text-body font-semibold text-fg">
+            {accountQuery.error instanceof Error
+              ? accountQuery.error.message
+              : "Couldn't load account settings."}
+          </p>
+          <AppButton
+            variant="secondary"
+            onClick={() => {
+              void accountQuery.refetch();
+            }}
+          >
+            Retry
+          </AppButton>
+        </div>
+      ) : selectedAccountId && !s ? (
         <div className="py-8 text-center text-prose text-fg-soft">Loading account...</div>
       ) : !s ? (
         <div className="py-8 text-center text-prose text-fg-soft">
@@ -493,7 +511,7 @@ function CadencePage() {
             <AppButton
               variant="primary"
               onClick={handleSave}
-              disabled={!isModified}
+              disabled={!isModified || (mode === "stopped" && stopReason === "")}
               loading={save.isPending}
             >
               Save
