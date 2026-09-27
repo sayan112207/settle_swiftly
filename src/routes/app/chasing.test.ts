@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { skippedLabel } from "@/routes/app/chasing";
+import { skippedLabel } from "@/routes/app/chasing.index";
 import type { ChaseQueueItem, ChaseSkipped } from "@/lib/schemas/dashboard";
 
 const ITEMS: ChaseQueueItem[] = [
