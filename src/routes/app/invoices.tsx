@@ -11,7 +11,12 @@ import { formatINR, formatShortDate } from "@/lib/format";
 import { accountsQueryKeys, getAccounts } from "@/lib/services/accounts";
 import { getInvoices, invoicesQueryKeys, type InvoiceRow } from "@/lib/services/invoices";
 import { exportInvoicesAsCSV } from "@/lib/utils/csv-export";
-import { toISTDate, getTodayIST } from "@/lib/utils/invoice-date-utils";
+import {
+  toISTDate,
+  getTodayIST,
+  getDaysUntilDue,
+  isDateInRange,
+} from "@/lib/utils/invoice-date-utils";
 
 const invoicesSearchSchema = z.object({
   status: z.enum(["overdue", "disputed", "promise-broken"]).optional(),
@@ -49,39 +54,6 @@ function getAgingBucket(daysOverdue: number): string {
   if (daysOverdue <= 60) return "31–60 days";
   if (daysOverdue <= 90) return "61–90 days";
   return "90+ days";
-}
-
-/** Check if a date falls within a named range (Today, This week, etc.). */
-function isDateInRange(dateStr: string, bucket: string): boolean {
-  const date = toISTDate(dateStr);
-  const today = toISTDate(getTodayIST());
-
-  const oneWeekAgo = new Date(today);
-  oneWeekAgo.setDate(today.getDate() - 7);
-
-  const oneMonthAgo = new Date(today);
-  oneMonthAgo.setMonth(today.getMonth() - 1);
-
-  const thirtyDaysAgo = new Date(today);
-  thirtyDaysAgo.setDate(today.getDate() - 30);
-
-  const quarterStart = new Date(today);
-  const quarter = Math.floor(today.getMonth() / 3);
-  quarterStart.setMonth(quarter * 3, 1);
-
-  if (bucket === "Today") return date.toDateString() === today.toDateString();
-  if (bucket === "This week") return date >= oneWeekAgo && date <= today;
-  if (bucket === "This month")
-    return date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
-  if (bucket === "Last month") {
-    const lastMonth = new Date(today);
-    lastMonth.setMonth(today.getMonth() - 1);
-    return (
-      date.getMonth() === lastMonth.getMonth() && date.getFullYear() === lastMonth.getFullYear()
-    );
-  }
-  if (bucket === "This quarter") return date >= quarterStart && date <= today;
-  return false;
 }
 
 /** Get Tailwind classes for status badge based on invoice status. */
@@ -492,33 +464,64 @@ function InvoicesPage() {
         </div>
       </header>
 
-      {/* Metrics */}
-      {!isLoading && !isError && invoicesQuery.data && (
-        <div className="flex gap-8 border-b border-gray-200 pb-4 items-baseline">
-          <div className="text-left">
-            <div className="text-2xl font-bold text-gray-900">
-              {formatINR(String(metrics.outstanding))}
-            </div>
-            <div className="text-sm text-gray-600 mt-1">Outstanding</div>
-          </div>
-          <div className="text-left">
-            <div className="text-lg font-bold text-red-700">
-              {formatINR(String(metrics.overdue))}
-            </div>
-            <div className="text-sm text-gray-600 mt-1">Overdue</div>
-          </div>
-          <div className="text-left">
-            <div className="text-lg font-bold text-amber-700">
-              {formatINR(String(metrics.dueWeek))}
-            </div>
-            <div className="text-sm text-gray-600 mt-1">Due this week</div>
-          </div>
+      {/* Loading state */}
+      {isLoading && (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }, (_, i) => (
+            <AppSkeleton key={i} className="h-12 w-full" />
+          ))}
         </div>
       )}
 
-      {/* Tabs */}
-      {!isLoading && !isError && invoicesQuery.data && invoicesQuery.data.length > 0 && (
+      {/* Error state */}
+      {isError && (
+        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
+          <p className="text-sm font-semibold text-gray-900">Couldn't load invoices</p>
+          <AppButton
+            variant="secondary"
+            onClick={async () => {
+              await invoicesQuery.refetch();
+            }}
+            className="mt-4"
+          >
+            Retry
+          </AppButton>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!isLoading && !isError && isEmpty && (
+        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
+          <p className="text-sm text-gray-600">No invoices yet. Add entries to begin.</p>
+        </div>
+      )}
+
+      {/* Populated state */}
+      {!isLoading && !isError && !isEmpty && (
         <>
+          {/* Metrics */}
+          <div className="flex gap-8 border-b border-gray-200 pb-4 items-baseline">
+            <div className="text-left">
+              <div className="text-2xl font-bold text-gray-900">
+                {formatINR(String(metrics.outstanding))}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Outstanding</div>
+            </div>
+            <div className="text-left">
+              <div className="text-lg font-bold text-red-700">
+                {formatINR(String(metrics.overdue))}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Overdue</div>
+            </div>
+            <div className="text-left">
+              <div className="text-lg font-bold text-amber-700">
+                {formatINR(String(metrics.dueWeek))}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Due this week</div>
+            </div>
+          </div>
+
+          {/* Tabs */}
           <div className="flex gap-6 border-b border-gray-200 pb-2">
             <button
               onClick={() => {
@@ -861,32 +864,8 @@ function InvoicesPage() {
             </div>
           )}
 
-          {/* Table */}
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }, (_, i) => (
-                <AppSkeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : isError ? (
-            <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-              <p className="text-sm font-semibold text-gray-900">Couldn't load invoices</p>
-              <AppButton
-                variant="secondary"
-                onClick={async () => {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  await (invoicesQuery as any).refetch();
-                }}
-                className="mt-4"
-              >
-                Retry
-              </AppButton>
-            </div>
-          ) : isEmpty ? (
-            <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
-              <p className="text-sm text-gray-600">No invoices yet. Add entries to begin.</p>
-            </div>
-          ) : isNoResults ? (
+          {/* No results state (when filters return empty) */}
+          {isNoResults ? (
             <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
               <p className="text-sm font-semibold text-gray-900">
                 {viewMode === "collections"
@@ -908,6 +887,7 @@ function InvoicesPage() {
             </div>
           ) : (
             <>
+              {/* Table */}
               <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
                 <table className="w-full border-collapse">
                   <thead>

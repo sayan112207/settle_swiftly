@@ -120,23 +120,47 @@ export const getInvoices = createServerFn({ method: "GET" })
       .order("created_at", { ascending: false });
     if (error) throw new Error("Couldn't load invoices.");
 
-    // Fetch payment totals for all invoices
-    const { data: payments, error: paymentsError } = await supabase
-      .from("payments")
-      .select("invoice_id, amount")
-      .eq("org_id", data.org_id);
-    if (paymentsError) throw new Error("Couldn't load payment data.");
+    // Build invoice IDs for targeted payment lookup
+    const invoiceList = invoices ? (invoices as unknown as InvoiceQueryRow[]) : [];
+    const invoiceIds = invoiceList.map((inv) => inv.id);
 
-    const paymentsByInvoice = new Map<string, number>();
-    if (payments) {
-      (payments as unknown as PaymentQueryRow[]).forEach((payment) => {
-        const current = paymentsByInvoice.get(payment.invoice_id) ?? 0;
-        paymentsByInvoice.set(payment.invoice_id, current + payment.amount);
-      });
+    // Fetch payment totals with pagination to avoid truncation at 1000 rows
+    const allPayments: PaymentQueryRow[] = [];
+    if (invoiceIds.length > 0) {
+      const pageSize = 1000;
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data: payments, error: paymentsError } = await supabase
+          .from("payments")
+          .select("invoice_id, amount")
+          .eq("org_id", data.org_id)
+          .in("invoice_id", invoiceIds)
+          .range(offset, offset + pageSize - 1);
+
+        if (paymentsError) throw new Error("Couldn't load payment data.");
+
+        if (!payments || payments.length === 0) {
+          hasMore = false;
+        } else {
+          allPayments.push(...(payments as unknown as PaymentQueryRow[]));
+          if (payments.length < pageSize) {
+            hasMore = false;
+          } else {
+            offset += pageSize;
+          }
+        }
+      }
     }
 
+    const paymentsByInvoice = new Map<string, number>();
+    allPayments.forEach((payment) => {
+      const current = paymentsByInvoice.get(payment.invoice_id) ?? 0;
+      paymentsByInvoice.set(payment.invoice_id, current + payment.amount);
+    });
+
     // Add calculated amount_paid to each invoice
-    const invoiceList = invoices ? (invoices as unknown as InvoiceQueryRow[]) : [];
     return invoiceList.map((inv) => ({
       ...inv,
       amount_paid: paymentsByInvoice.get(inv.id) ?? 0,
