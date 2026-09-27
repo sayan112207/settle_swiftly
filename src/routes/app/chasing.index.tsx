@@ -32,10 +32,12 @@ const CHASING_QUEUE_LIMIT = 50;
 const chasingQueueKey = ["dashboard", "chase-queue", "full"] as const;
 const SKIPPED_PAGE_SIZE = 5;
 
+/** Extracts user-facing error message from API error or returns fallback. */
 function userFacingMessage(error: unknown, fallback: string): string {
   return error instanceof DashboardApiError ? error.message : fallback;
 }
 
+/** Formats skipped chases for display, pairing invoice numbers with skip reasons. */
 export function skippedLabel(
   skipped: readonly ChaseSkipped[],
   items: readonly ChaseQueueItem[],
@@ -48,6 +50,7 @@ export function skippedLabel(
     .join(", ");
 }
 
+/** Approval queue page: displays chase queue items with approve/skip actions. */
 function ApprovalQueuePage() {
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -234,6 +237,7 @@ function ApprovalQueuePage() {
   );
 }
 
+/** Skeleton placeholders shown while the chase queue is loading. */
 function QueueSkeletons() {
   return (
     <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading chase queue">
@@ -244,6 +248,7 @@ function QueueSkeletons() {
   );
 }
 
+/** Empty state shown when the queue has no eligible invoices. */
 function EmptyQueue() {
   return (
     <div className="flex flex-col items-center gap-3 rounded-card border border-hairline bg-card p-14 text-center">
@@ -257,6 +262,7 @@ function EmptyQueue() {
   );
 }
 
+/** Queue row: collapsed summary or expanded detail view with approve/skip actions. */
 function ChaseCard({
   item,
   expanded,

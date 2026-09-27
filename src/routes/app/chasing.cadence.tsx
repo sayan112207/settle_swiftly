@@ -32,6 +32,7 @@ const TIME_OPTIONS = [
   "20:00",
 ];
 
+/** Formats 24-hour time string (HH:MM) to 12-hour display format with AM/PM suffix. */
 function formatTime(value: string) {
   const [hStr, mStr] = value.split(":");
   const h = Number(hStr);
@@ -52,6 +53,7 @@ type Snapshot = {
   days: Weekday[];
 };
 
+/** Cadence configuration page: edit default or account-specific chase cadence settings. */
 function CadencePage() {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);

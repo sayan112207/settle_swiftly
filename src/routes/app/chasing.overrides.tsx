@@ -25,6 +25,7 @@ interface OverrideRow {
   isStale: boolean;
 }
 
+/** Cadence overrides page: lists accounts with non-default cadence and allows reset. */
 function CadenceOverridesPage() {
   const [resetConfirmId, setResetConfirmId] = useState<string | null>(null);
 
@@ -242,6 +243,7 @@ function CadenceOverridesPage() {
   );
 }
 
+/** Describes what cadence settings differ from the default. */
 function getDiffers(settings: AccountChasingSettings): string {
   const diffs: string[] = [];
   if (settings.chase_mode === "stopped") {
@@ -261,6 +263,7 @@ function getDiffers(settings: AccountChasingSettings): string {
   return diffs.length > 0 ? diffs.join(", ") : "Custom cadence";
 }
 
+/** Formats ISO date string to localized display format (en-IN), or "Unknown" on parse error. */
 function formatDate(dateString: string): string {
   try {
     const date = new Date(dateString);
