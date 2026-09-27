@@ -15,7 +15,7 @@ import {
   postChases,
 } from "@/lib/services/dashboard";
 import type { ChaseQueueItem, ChaseSkipped } from "@/lib/schemas/dashboard";
-import { useChasingContext } from "./chasing";
+import { useChasingContext } from "@/lib/contexts/chasing-context";
 
 export const Route = createFileRoute("/app/chasing/")({
   head: () => ({ meta: [{ title: `Chasing — ${PRODUCT_NAME}` }] }),

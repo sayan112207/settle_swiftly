@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
-import { createContext, useContext, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { AppButton } from "@/components/app/AppButton";
@@ -14,6 +14,7 @@ import {
   postChases,
 } from "@/lib/services/dashboard";
 import type { ChaseQueueItem } from "@/lib/schemas/dashboard";
+import { ChasingContext } from "@/lib/contexts/chasing-context";
 
 export const Route = createFileRoute("/app/chasing")({
   head: () => ({ meta: [{ title: `Chasing — ${PRODUCT_NAME}` }] }),
@@ -22,24 +23,6 @@ export const Route = createFileRoute("/app/chasing")({
 
 const CHASING_QUEUE_LIMIT = 50;
 const chasingQueueKey = ["dashboard", "chase-queue", "full"] as const;
-
-type ChasingContextValue = {
-  skippedIds: ReadonlySet<string>;
-  setSkippedIds: (
-    set: ReadonlySet<string> | ((prev: ReadonlySet<string>) => ReadonlySet<string>),
-  ) => void;
-};
-
-const ChasingContext = createContext<ChasingContextValue | undefined>(undefined);
-
-/** Access shared chasing state (skipped invoice IDs) from child components. */
-export function useChasingContext() {
-  const context = useContext(ChasingContext);
-  if (!context) {
-    throw new Error("useChasingContext must be used within ChasingLayout");
-  }
-  return context;
-}
 
 /** Extracts user-facing error message from API error or returns fallback. */
 function userFacingMessage(error: unknown, fallback: string): string {
