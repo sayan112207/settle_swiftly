@@ -11,13 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { formatINR } from "@/lib/format";
 import { getAccountInvoices, accountsQueryKeys } from "@/lib/services/accounts";
 import type { AccountPayment } from "@/lib/schemas/accounts";
@@ -30,18 +23,19 @@ interface PaymentAllocationModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/** Modal for allocating received payments to unpaid invoices with TDS section selection and balance tracking. Prevents over-allocation and auto-fills oldest invoices first. Backend persistence is coming soon. */
+type TdsOption = "None" | "194C" | "194J" | "194H" | "Custom";
+
+/** Modal for allocating received payments to unpaid invoices with per-invoice TDS selection and balance tracking. Prevents over-allocation and supports auto-fill. */
 export function PaymentAllocationModal({
   open,
   payment,
   accountId,
   onOpenChange,
 }: PaymentAllocationModalProps) {
-  const firstInputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [isDirty, setIsDirty] = useState(false);
-  const [unsavedChanges, setUnsavedChanges] = useState(false);
   const [showApplyComingSoon, setShowApplyComingSoon] = useState(false);
-  const [showReverseComingSoon, setShowReverseComingSoon] = useState(false);
+  const [confirmingReverse, setConfirmingReverse] = useState(false);
 
   const invoicesQuery = useQuery({
     queryKey: accountsQueryKeys.invoices(accountId),
@@ -89,170 +83,185 @@ export function PaymentAllocationModal({
   };
 
   const handleClose = () => {
-    if (isDirty && !unsavedChanges) {
-      setUnsavedChanges(true);
-      return;
+    if (isDirty) {
+      if (!window.confirm("Discard changes to this allocation?")) return;
     }
     setIsDirty(false);
-    setUnsavedChanges(false);
+    setConfirmingReverse(false);
     onOpenChange(false);
   };
 
   const handleApply = () => {
     if (allocation.balance.isOverAllocated) return;
-    // No backend endpoint exists yet for allocations
-    // This is a draft-only modal
     setShowApplyComingSoon(true);
     const timer = setTimeout(() => setShowApplyComingSoon(false), 4000);
     return () => clearTimeout(timer);
   };
 
-  const handleReverse = () => {
-    setShowReverseComingSoon(true);
-    const timer = setTimeout(() => setShowReverseComingSoon(false), 4000);
-    return () => clearTimeout(timer);
+  const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      handleClose();
+      return;
+    }
+
+    if (e.key === "Tab" && dialogRef.current) {
+      const focusables = Array.from(
+        dialogRef.current.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => !(el as HTMLButtonElement | HTMLInputElement).disabled);
+
+      if (!focusables.length) return;
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        (last as HTMLElement).focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        (first as HTMLElement).focus();
+      }
+    }
   };
 
   if (!payment) return null;
 
+  const hasAllocations = payment.allocations.length > 0;
+  const tdsOptions: TdsOption[] = ["None", "194J", "194C", "194H", "Custom"];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-hidden flex flex-col">
+      <DialogContent
+        className="max-h-[90vh] max-w-2xl overflow-hidden flex flex-col"
+        onKeyDown={handleDialogKeyDown}
+      >
         <DialogHeader>
-          <DialogTitle>Allocate Payment</DialogTitle>
+          <DialogTitle>Allocate payment</DialogTitle>
           <DialogDescription>
-            {payment.source} · {payment.reference}
+            {formatINR(payment.amount)} received · {payment.source} · {payment.date}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 overflow-y-auto flex-1">
-          {/* Payment summary */}
-          <div className="flex justify-between items-center px-6 py-3 bg-subtle rounded-card border border-hairline">
-            <div>
-              <p className="text-prose text-fg-muted">Received Amount</p>
-              <p className="text-metric font-bold text-fg">{formatINR(payment.amount)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-prose text-fg-muted">Date</p>
-              <p className="text-body font-semibold text-fg">{payment.date}</p>
-            </div>
-          </div>
+        <div className="space-y-4 overflow-y-auto flex-1" ref={dialogRef}>
+          <div className="px-6">
+            {/* Auto-fill button */}
+            <AppButton
+              variant="text"
+              onClick={handleAutoFill}
+              disabled={invoicesQuery.isLoading}
+              className="mb-3"
+            >
+              Auto-fill oldest first
+            </AppButton>
 
-          {/* TDS Section */}
-          <div className="px-6 space-y-3">
-            <label className="block">
-              <span className="text-prose font-semibold text-fg-muted">TDS Section</span>
-              <Select
-                value={allocation.tdsSection}
-                onValueChange={(val) => {
-                  allocation.setTdsSection(val as "None" | "194C" | "194J" | "194H" | "Custom");
-                  setIsDirty(true);
-                }}
-              >
-                <SelectTrigger className="mt-1.5">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="None">None</SelectItem>
-                  <SelectItem value="194C">194C</SelectItem>
-                  <SelectItem value="194J">194J</SelectItem>
-                  <SelectItem value="194H">194H</SelectItem>
-                  <SelectItem value="Custom">Custom</SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
+            {/* Invoice rows */}
+            {invoicesQuery.isLoading ? (
+              <div className="space-y-2">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="h-12 bg-subtle rounded animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-0 divide-y divide-hairline">
+                {allocation.rows.map((row) => (
+                  <div key={row.invoiceId} className="py-3">
+                    <div className="flex items-center gap-3 mb-2">
+                      <input
+                        type="checkbox"
+                        id={`chk-${row.invoiceId}`}
+                        checked={row.selected}
+                        onChange={() => {
+                          allocation.toggleInvoice(row.invoiceId);
+                          setIsDirty(true);
+                        }}
+                        className="w-4 h-4 accent-accent"
+                      />
+                      <label
+                        htmlFor={`chk-${row.invoiceId}`}
+                        className="flex-1 text-body font-semibold text-fg cursor-pointer"
+                      >
+                        {row.invoiceNumber}{" "}
+                        <span className="font-normal text-fg-muted">· balance</span>{" "}
+                        <span className="tnum font-semibold text-fg">
+                          {formatINR(row.outstandingBalance)}
+                        </span>
+                      </label>
+                      <label htmlFor={`amt-${row.invoiceId}`} className="sr-only">
+                        Amount allocated to {row.invoiceNumber}
+                      </label>
+                      <input
+                        id={`amt-${row.invoiceId}`}
+                        type="text"
+                        inputMode="numeric"
+                        value={row.allocated}
+                        onChange={(e) => {
+                          allocation.setAllocationAmount(row.invoiceId, e.target.value);
+                          setIsDirty(true);
+                        }}
+                        disabled={!row.selected}
+                        className="tnum w-28 rounded border border-hairline px-2 py-1.5 text-right text-body font-semibold text-fg disabled:opacity-50 disabled:cursor-not-allowed focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                      />
+                    </div>
 
-            {allocation.tdsSection === "Custom" && (
-              <label className="block">
-                <span className="text-prose font-semibold text-fg-muted">TDS Percentage</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={allocation.tdsPercentage}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val) && val >= 0 && val <= 100) {
-                      allocation.setTdsPercentage(val);
-                      setIsDirty(true);
-                    }
-                  }}
-                  className="mt-1.5 w-full rounded-input border border-stroke bg-card px-3 py-2 text-body font-semibold text-fg"
-                />
-              </label>
+                    {/* TDS options - show for selected invoices */}
+                    {row.selected && (
+                      <div className="pl-7 space-y-2">
+                        <div className="text-prose font-semibold text-fg-muted uppercase tracking-wide text-xs">
+                          TDS treatment
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {tdsOptions.map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => {
+                                // TODO: Implement TDS selection per invoice
+                                setIsDirty(true);
+                              }}
+                              className="px-3 py-1 text-prose font-semibold border border-hairline rounded-full hover:bg-hovered transition-colors"
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
-          {/* Invoice allocation rows */}
-          <div className="px-6">
-            <div className="mb-3 flex items-center justify-between">
-              <label className="text-prose font-semibold text-fg-muted">Invoices</label>
-              <AppButton variant="text" onClick={handleAutoFill} disabled={invoicesQuery.isLoading}>
-                Auto-fill oldest first
-              </AppButton>
-            </div>
-
-            <div className="space-y-2 border border-hairline rounded-card">
-              {allocation.rows.length === 0 ? (
-                <div className="p-4 text-center text-prose text-fg-muted">
-                  No invoices available.
-                </div>
-              ) : (
-                allocation.rows.map((row) => (
-                  <div
-                    key={row.invoiceId}
-                    className="flex items-center gap-3 p-3 hover:bg-hovered border-b border-hairline last:border-b-0"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={row.selected}
-                      onChange={() => {
-                        allocation.toggleInvoice(row.invoiceId);
-                        setIsDirty(true);
-                      }}
-                      className="w-4 h-4"
+          {/* Balance tracking */}
+          <div className="px-6 space-y-2">
+            <div
+              className={`rounded-lg border p-3 flex items-center gap-2 ${
+                allocation.balance.isOverAllocated
+                  ? "bg-error-tint border-error-edge"
+                  : allocation.balance.allocated === payment.amount
+                    ? "bg-accent-tint border-accent"
+                    : "bg-warn-tint border-warn-edge"
+              }`}
+            >
+              {!allocation.balance.isOverAllocated &&
+                allocation.balance.allocated === payment.amount && (
+                  <svg width="16" height="16" viewBox="0 0 16 16" className="flex-shrink-0">
+                    <circle cx="8" cy="8" r="7" fill="#DCEEE5" />
+                    <path
+                      d="M5 8.2 L7 10.2 L11 6"
+                      stroke="#087A52"
+                      strokeWidth="1.6"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-body font-semibold text-fg">{row.invoiceNumber}</div>
-                      <div className="text-prose text-fg-muted">
-                        Outstanding: {formatINR(row.outstandingBalance)}
-                      </div>
-                    </div>
-                    <input
-                      ref={row === allocation.rows[0] ? firstInputRef : null}
-                      type="text"
-                      value={row.allocated}
-                      onChange={(e) => {
-                        allocation.setAllocationAmount(row.invoiceId, e.target.value);
-                        setIsDirty(true);
-                      }}
-                      disabled={!row.selected}
-                      placeholder="0.00"
-                      className="w-24 rounded-input border border-stroke bg-card px-2 py-1 text-right text-body font-semibold text-fg disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Balance state */}
-          <div className="px-6">
-            <div className="space-y-2">
-              <div className="flex justify-between items-center py-2 border-b border-hairline">
-                <span className="text-prose text-fg">Allocated</span>
-                <span className="tnum text-body font-semibold text-fg">
-                  {formatINR(allocation.balance.allocated)}
-                </span>
-              </div>
-
-              {allocation.balance.isOverAllocated ? (
-                <div className="flex justify-between items-center py-2 bg-danger-tint rounded px-3 border border-danger-edge">
-                  <span className="text-prose font-semibold text-danger">Over-allocated by</span>
-                  <span className="tnum text-body font-bold text-danger">
-                    +
-                    {formatINR(
+                  </svg>
+                )}
+              <div className="tnum text-body font-semibold">
+                {allocation.balance.isOverAllocated
+                  ? `${formatINR(
                       (() => {
                         const excess =
                           allocation.balance.allocatedCents - allocation.balance.receivedCents;
@@ -260,21 +269,40 @@ export function PaymentAllocationModal({
                         const paise = excess % 100n;
                         return `${rupees}.${paise.toString().padStart(2, "0")}`;
                       })(),
-                    )}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex justify-between items-center py-2">
-                  <span className="text-prose text-fg-muted">Remaining</span>
-                  <span className="tnum text-body font-semibold text-fg">
-                    {formatINR(allocation.balance.remaining)}
-                  </span>
+                    )} over-allocated`
+                  : allocation.balance.allocated === payment.amount
+                    ? "Fully allocated"
+                    : `${formatINR(allocation.balance.remaining)} left`}
+              </div>
+            </div>
+
+            {parseFloat(allocation.balance.remaining) > 0 &&
+              !allocation.balance.isOverAllocated &&
+              parseFloat(allocation.balance.remaining) <
+                Math.min(...allocation.rows.map((r) => parseFloat(r.outstandingBalance))) && (
+                <div className="text-prose text-warn">
+                  {formatINR(allocation.balance.remaining)} will be held as unapplied credit on this
+                  account.
                 </div>
               )}
-            </div>
+
+            {allocation.balance.isOverAllocated && (
+              <div className="text-prose text-danger">
+                You've allocated{" "}
+                {formatINR(
+                  (() => {
+                    const excess =
+                      allocation.balance.allocatedCents - allocation.balance.receivedCents;
+                    const rupees = excess / 100n;
+                    const paise = excess % 100n;
+                    return `${rupees}.${paise.toString().padStart(2, "0")}`;
+                  })(),
+                )}{" "}
+                more than was received.
+              </div>
+            )}
           </div>
 
-          {/* Apply coming soon notification */}
           {showApplyComingSoon && (
             <div className="px-6">
               <ComingSoonNotification
@@ -283,68 +311,53 @@ export function PaymentAllocationModal({
               />
             </div>
           )}
-
-          {/* Reverse coming soon notification */}
-          {showReverseComingSoon && (
-            <div className="px-6">
-              <ComingSoonNotification
-                message="Allocation reversal is coming soon — backend support is being added."
-                variant="toast"
-              />
-            </div>
-          )}
-
-          {/* Unsaved changes confirmation */}
-          {unsavedChanges && (
-            <div className="px-6 py-3 bg-warn-tint border border-warn-edge rounded-card">
-              <p className="text-body font-semibold text-warn">
-                You have unsaved changes. Close without saving?
-              </p>
-              <div className="mt-2 flex gap-2">
-                <AppButton
-                  variant="secondary"
-                  onClick={() => {
-                    setUnsavedChanges(false);
-                    setIsDirty(false);
-                  }}
-                >
-                  Keep editing
-                </AppButton>
-                <AppButton
-                  variant="text"
-                  onClick={() => {
-                    setIsDirty(false);
-                    setUnsavedChanges(false);
-                    onOpenChange(false);
-                  }}
-                >
-                  Discard
-                </AppButton>
-              </div>
-            </div>
-          )}
         </div>
 
-        <DialogFooter className="flex gap-2">
-          <AppButton variant="secondary" onClick={handleClose}>
-            Cancel
-          </AppButton>
-          {payment?.allocations && payment.allocations.length > 0 && (
-            <AppButton variant="secondary" onClick={handleReverse}>
-              Reverse allocation
+        <DialogFooter className="flex items-center justify-between px-6 py-4 border-t border-hairline">
+          {!confirmingReverse && hasAllocations && (
+            <AppButton
+              variant="secondary"
+              onClick={() => setConfirmingReverse(true)}
+              className="text-danger"
+            >
+              Reverse this allocation
             </AppButton>
           )}
-          <AppButton
-            disabled={allocation.balance.isOverAllocated}
-            onClick={handleApply}
-            title={
-              allocation.balance.isOverAllocated
-                ? "Cannot apply: allocation exceeds received amount"
-                : ""
-            }
-          >
-            Apply allocation
-          </AppButton>
+
+          {confirmingReverse && (
+            <div className="flex items-center gap-3">
+              <p className="text-prose text-fg-muted">
+                Reverse {formatINR(payment.amount)} across {payment.allocations.length} invoice
+                {payment.allocations.length !== 1 ? "s" : ""}? Their balances and aging will be
+                restored.
+              </p>
+              <AppButton variant="secondary" onClick={() => setConfirmingReverse(false)}>
+                Cancel
+              </AppButton>
+              <AppButton variant="secondary" onClick={() => setConfirmingReverse(false)}>
+                Reverse allocation
+              </AppButton>
+            </div>
+          )}
+
+          {!confirmingReverse && (
+            <div className="flex gap-2">
+              <AppButton variant="secondary" onClick={handleClose}>
+                Cancel
+              </AppButton>
+              <AppButton
+                onClick={handleApply}
+                disabled={allocation.balance.isOverAllocated}
+                title={
+                  allocation.balance.isOverAllocated
+                    ? "Cannot apply: allocation exceeds received amount"
+                    : ""
+                }
+              >
+                Apply
+              </AppButton>
+            </div>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

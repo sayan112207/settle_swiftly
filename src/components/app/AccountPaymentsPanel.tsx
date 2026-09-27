@@ -3,7 +3,6 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { AppButton } from "@/components/app/AppButton";
-import { AppSkeleton } from "@/components/app/AppSkeleton";
 import { PaymentCard } from "@/components/app/PaymentCard";
 import { PaymentAllocationModal } from "@/components/app/PaymentAllocationModal";
 import { PaymentTriageTabs } from "@/components/app/PaymentTriageTabs";
@@ -82,48 +81,28 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [paymentsQuery.data?.items, selectedPaymentIndex]);
 
-  if (paymentsQuery.isPending) {
-    return <PaymentsLoading />;
-  }
-
-  if (paymentsQuery.isError) {
-    const message =
-      paymentsQuery.error instanceof AccountsApiError
-        ? paymentsQuery.error.message
-        : "Couldn't load payments.";
-    return (
-      <div className="rounded-card border border-hairline bg-card p-6">
-        <p className="text-body font-semibold text-fg">{message}</p>
-        <div className="mt-3">
-          <AppButton
-            variant="secondary"
-            onClick={() => {
-              void paymentsQuery.refetch();
-            }}
-          >
-            Retry
-          </AppButton>
-        </div>
-      </div>
-    );
-  }
-
+  const isPending = paymentsQuery.isPending;
+  const isError = paymentsQuery.isError;
   const data = paymentsQuery.data;
-  if (!data || data.items.length === 0) {
-    return (
-      <div className="rounded-card border border-hairline bg-card p-8 text-center">
-        <p className="text-body font-semibold text-fg">
-          No payments recorded from {accountName} yet.
-        </p>
-      </div>
-    );
-  }
-
-  const { stats, items: payments } = data;
+  const isEmpty = data && data.items.length === 0;
+  const payments = data?.items ?? [];
+  const stats = data?.stats ?? {
+    received_90d: "0.00",
+    unapplied_total: "0.00",
+    average_delay_days: null,
+  };
   const hasUnapplied = !isZeroMoney(stats.unapplied_total);
+
+  const errorMessage =
+    isError && paymentsQuery.error instanceof AccountsApiError
+      ? paymentsQuery.error.message
+      : isError
+        ? "Couldn't load payments."
+        : null;
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Stats always visible */}
       <StatRow
         received={stats.received_90d}
         unapplied={stats.unapplied_total}
@@ -133,17 +112,49 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
       {/* Triage tabs */}
       <PaymentTriageTabs totalPayments={payments.length} />
 
-      {/* Stale/unreviewed warning */}
-      <PaymentReviewBanner />
+      {/* Stale/unreviewed warning - show if there are payments */}
+      <PaymentReviewBanner unreviewed={Math.max(0, payments.length - 1)} heldInvoiceCount={0} />
 
       {/* Held invoices section */}
-      <HeldInvoicesSection />
+      <HeldInvoicesSection invoices={[]} />
 
-      {/* Payment cards */}
+      {/* Payment cards or loading/empty/error states */}
       <div className="space-y-3">
-        {payments.length === 0 ? (
-          <div className="text-center py-8 text-prose text-fg-muted">No payments in this view.</div>
+        {isPending ? (
+          // Loading state
+          <>
+            <div className="h-32 rounded-card bg-subtle animate-pulse" />
+            <div className="h-32 rounded-card bg-subtle animate-pulse" />
+            <div className="h-32 rounded-card bg-subtle animate-pulse" />
+          </>
+        ) : isError ? (
+          // Error state
+          <div className="rounded-card border border-hairline bg-card p-6">
+            <p className="text-body font-semibold text-fg">{errorMessage}</p>
+            <div className="mt-3">
+              <AppButton
+                variant="secondary"
+                onClick={() => {
+                  void paymentsQuery.refetch();
+                }}
+              >
+                Retry
+              </AppButton>
+            </div>
+          </div>
+        ) : isEmpty ? (
+          // Empty state
+          <div className="rounded-card border border-hairline bg-card p-12 text-center">
+            <h3 className="text-body font-semibold text-fg">Nothing to review.</h3>
+            <p className="text-prose text-fg-muted mt-2">
+              Payments will appear here as your bank alerts come in.
+            </p>
+            <AppButton variant="secondary" className="mt-4">
+              Set up payment alerts
+            </AppButton>
+          </div>
         ) : (
+          // Payments cards
           payments.map((payment, idx) => (
             <PaymentCard
               key={payment.payment_id}
@@ -168,6 +179,7 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
         )}
       </div>
 
+      {/* Unapplied credit banner */}
       {hasUnapplied ? (
         <div className="flex items-center justify-between gap-4 rounded-card border border-warn-edge bg-warn-tint px-4 py-3">
           <p className="text-body font-semibold text-warn">
@@ -182,6 +194,7 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
         </div>
       ) : null}
 
+      {/* Allocation modal */}
       <PaymentAllocationModal
         open={allocationModalOpen}
         payment={allocationPayment}
@@ -221,6 +234,7 @@ const STAT_TONE = {
   muted: "text-fg-muted",
 } as const;
 
+/** Metric tile displaying a labeled stat value (received, unapplied, delay). */
 function Stat({
   label,
   value,
@@ -234,26 +248,6 @@ function Stat({
     <div className="rounded-card border border-hairline bg-card px-5 py-4">
       <dd className={`tnum text-metric font-bold tracking-tight ${STAT_TONE[tone]}`}>{value}</dd>
       <dt className="mt-1 text-prose font-normal text-fg-muted">{label}</dt>
-    </div>
-  );
-}
-
-function PaymentsLoading() {
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-3 gap-4">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="rounded-card border border-hairline bg-card px-5 py-4">
-            <AppSkeleton className="h-7 w-32 rounded-check" />
-            <AppSkeleton className="mt-2 h-4 w-24 rounded-check" />
-          </div>
-        ))}
-      </div>
-      <div className="rounded-card border border-hairline bg-card p-4">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <AppSkeleton key={i} className="mb-3 h-11 w-full rounded-check" />
-        ))}
-      </div>
     </div>
   );
 }

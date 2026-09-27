@@ -7,7 +7,7 @@ interface PaymentTriageTabsProps {
 
 type TabId = "confident" | "needs_review" | "unmatched";
 
-/** Payment categorization tabs for filtering by confidence level: confident, needs-review, or unmatched. Shows placeholder counts; backend categorization logic is coming soon. */
+/** Payment categorization tabs for filtering by confidence level. Backend categorization logic is coming soon; shows placeholder counts. */
 export function PaymentTriageTabs({ totalPayments }: PaymentTriageTabsProps) {
   const [selectedTab, setSelectedTab] = useState<TabId>("confident");
   const [showComingSoon, setShowComingSoon] = useState(false);
@@ -15,11 +15,11 @@ export function PaymentTriageTabs({ totalPayments }: PaymentTriageTabsProps) {
   const tabs: Array<{
     id: TabId;
     label: string;
-    count: string;
+    count: number;
   }> = [
-    { id: "confident", label: "Confident", count: "—" },
-    { id: "needs_review", label: "Needs review", count: "—" },
-    { id: "unmatched", label: "Unmatched", count: "—" },
+    { id: "confident", label: "Confident", count: 0 },
+    { id: "needs_review", label: "Needs review", count: 0 },
+    { id: "unmatched", label: "Unmatched", count: 0 },
   ];
 
   const handleTabClick = (tabId: TabId) => {
@@ -31,22 +31,33 @@ export function PaymentTriageTabs({ totalPayments }: PaymentTriageTabsProps) {
 
   return (
     <div className="space-y-3">
-      {/* Tab buttons */}
-      <div className="flex gap-2">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => handleTabClick(tab.id)}
-            className={`px-4 py-2 rounded-card border text-body font-semibold transition-colors ${
-              selectedTab === tab.id
-                ? "border-accent bg-accent-tint text-fg"
-                : "border-hairline bg-card text-fg-muted hover:bg-hovered"
-            }`}
-          >
-            {tab.label}
-            <span className="ml-2 text-prose text-fg-muted">({tab.count})</span>
-          </button>
-        ))}
+      {/* Tab list with semantic role */}
+      <div role="tablist" className="flex gap-7 border-b border-hairline pb-0">
+        {tabs.map((tab) => {
+          const isSelected = selectedTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={isSelected}
+              onClick={() => handleTabClick(tab.id)}
+              className={`px-0 py-3 border-b-2 text-body font-semibold transition-colors flex items-center gap-2 ${
+                isSelected
+                  ? "border-b-accent text-fg"
+                  : "border-b-transparent text-fg-muted hover:text-fg"
+              }`}
+            >
+              {tab.label}
+              <span
+                className={`text-prose font-semibold px-2 py-0.5 rounded-full ${
+                  isSelected ? "bg-accent-tint text-accent" : "bg-subtle text-fg-muted"
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Coming soon message */}
