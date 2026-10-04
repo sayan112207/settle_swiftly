@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
+import { LogOut } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { Toaster } from "@/components/ui/sonner";
@@ -72,14 +73,14 @@ export function AppShell({ user, orgName, children }: AppShellProps) {
 
   return (
     <div className="app-theme app-shell flex min-h-screen">
-      <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-hairline bg-subtle">
+      <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-hairline bg-subtle px-4 py-5">
         {/* Spec asks for 17px; the type scale stops at 16px (text-section) and
             an arbitrary size is not permitted. */}
-        <div className="px-2 pt-2 pb-6">
+        <div className="px-2 pt-1.5 pb-6">
           <span className="text-section font-bold tracking-tight text-fg">{WORDMARK}</span>
         </div>
 
-        <nav aria-label="Primary" className="flex flex-col">
+        <nav aria-label="Primary" className="flex flex-col gap-0.5">
           {NAV_ITEMS.map((item) => (
             <Link
               key={item.to}
@@ -87,7 +88,7 @@ export function AppShell({ user, orgName, children }: AppShellProps) {
               // Left padding lives in the active/inactive props rather than
               // here: two competing pl-* classes on one element resolve by
               // stylesheet order, not by the order they are written.
-              className="rounded-r-nav border-l-2 py-2 pr-3 text-body font-semibold transition-colors duration-150 hover:bg-hovered"
+              className="rounded-r-nav border-l-2 py-2 pr-2 text-body font-semibold transition-colors duration-150 hover:bg-hovered"
               activeProps={{
                 // pl-[10px] is the one arbitrary value permitted in this
                 // codebase: 10px + the 2px accent edge lands the label on the
@@ -107,7 +108,7 @@ export function AppShell({ user, orgName, children }: AppShellProps) {
           ))}
         </nav>
 
-        <div className="mt-auto flex items-center gap-3 border-t border-hairline p-3">
+        <div className="mt-auto flex items-center gap-2.5 border-t border-hairline px-2 pt-2.5">
           {user.avatarUrl ? (
             <img
               src={user.avatarUrl}
@@ -131,9 +132,13 @@ export function AppShell({ user, orgName, children }: AppShellProps) {
             type="button"
             onClick={handleSignOut}
             disabled={signingOut}
-            className="shrink-0 rounded-nav px-2 py-1 text-eyebrow font-semibold text-fg-muted transition-colors hover:bg-hovered hover:text-fg disabled:opacity-60"
+            // An icon keeps the name readable in the reference's narrower
+            // card; the label stays available to screen readers and on hover.
+            aria-label={signingOut ? "Signing out…" : "Sign out"}
+            title="Sign out"
+            className="shrink-0 rounded-nav p-1.5 text-fg-muted transition-colors hover:bg-hovered hover:text-fg disabled:opacity-60"
           >
-            {signingOut ? "Signing out…" : "Sign out"}
+            <LogOut aria-hidden className="size-4" />
           </button>
         </div>
       </aside>
