@@ -64,6 +64,27 @@ function checkDueDate(value: { issue_date: string; due_date: string }, ctx: z.Re
 
 export const invoiceDraftSchema = invoiceDraftObjectSchema.superRefine(checkDueDate);
 
+/**
+ * A draft whose account does not exist yet — an import naming a customer the
+ * org has never billed, or the manual form adding one inline.
+ *
+ * Every other field is held to the same standard; only the account differs,
+ * because there is no id to validate until the account is created. That
+ * happens immediately before the batch is saved, and the draft is re-checked
+ * against `invoiceDraftSchema` on the way out, so nothing reaches the database
+ * having been validated only by this looser schema.
+ */
+export const invoiceDraftPendingAccountSchema = invoiceDraftObjectSchema
+  .omit({ account_id: true })
+  .extend({
+    account_name: z
+      .string()
+      .trim()
+      .min(1, "Choose an account.")
+      .max(200, "That account name is longer than 200 characters."),
+  })
+  .superRefine(checkDueDate);
+
 export const importInvoicesSchema = z.object({
   org_id: z.string().uuid(),
   // Same object + refinement as invoiceDraftSchema (no separate .omit() step
@@ -71,5 +92,15 @@ export const importInvoicesSchema = z.object({
   invoices: z.array(invoiceDraftObjectSchema.superRefine(checkDueDate)).min(1).max(500),
 });
 
+/**
+ * URL search for `/app/add-entries`. `.catch` keeps a mistyped link on the
+ * manual tab rather than crashing the route.
+ */
+export const addEntriesSearchSchema = z.object({
+  mode: z.enum(["manual", "upload", "paste"]).default("manual").catch("manual"),
+});
+
+export type AddEntriesSearch = z.infer<typeof addEntriesSearchSchema>;
 export type InvoiceDraftInput = z.infer<typeof invoiceDraftSchema>;
+export type InvoiceDraftPendingAccountInput = z.infer<typeof invoiceDraftPendingAccountSchema>;
 export type ImportInvoicesInput = z.infer<typeof importInvoicesSchema>;

@@ -1,3 +1,4 @@
+import { useRouter } from "@tanstack/react-router";
 import { Clock } from "lucide-react";
 
 import { AppButton } from "@/components/app/AppButton";
@@ -12,6 +13,7 @@ type AccountRecommendationStripProps = {
  * recommendation fields verbatim; when `null`, nothing mounts.
  */
 export function AccountRecommendationStrip({ recommendation }: AccountRecommendationStripProps) {
+  const router = useRouter();
   if (recommendation === null) return null;
 
   return (
@@ -24,7 +26,20 @@ export function AccountRecommendationStrip({ recommendation }: AccountRecommenda
         variant="secondary"
         className="shrink-0"
         onClick={() => {
-          window.location.assign(recommendation.action_href);
+          // Router rather than window.location: the href often points at the
+          // page already open with different search, and a full document load
+          // to reach it throws away the app and every cached query to land
+          // where a search-param change would have done.
+          //
+          // Split first. `to` is a path, not a URL — handed the whole
+          // `/app/accounts/{id}?tab=contacts&add=P0` it keeps the query as part
+          // of the path and appends its own, producing a second `?` and a route
+          // that matches nothing.
+          const url = new URL(recommendation.action_href, window.location.origin);
+          void router.navigate({
+            to: url.pathname,
+            search: Object.fromEntries(url.searchParams) as never,
+          });
         }}
       >
         {recommendation.action_label}

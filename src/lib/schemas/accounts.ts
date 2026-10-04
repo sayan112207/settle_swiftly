@@ -189,6 +189,14 @@ export const accountDetailTabSchema = z.enum([
 /** URL search for `/app/accounts/$accountId`. */
 export const accountDetailSearchSchema = z.object({
   tab: accountDetailTabSchema.default("invoices").catch("invoices"),
+  /**
+   * Opens the Contacts tab with the add-contact form already showing, for that
+   * tier. The recommendation strip links here: its whole message is "this
+   * account can't be chased, add a P0", so landing on the tab and leaving the
+   * user to find the button — or doing nothing at all, when they are already
+   * on the tab — is the strip failing at the one thing it is for.
+   */
+  add: contactTierSchema.optional().catch(undefined),
 });
 
 function agingSlot<B extends z.infer<typeof agingBucketSchema>>(bucket: B) {
@@ -434,6 +442,79 @@ export function dncReasonIsPresent(value: {
   return !value.do_not_contact || (value.dnc_reason ?? "").trim().length > 0;
 }
 
+/**
+ * The three channels a reminder can go out on, and the contact detail each one
+ * sends to. WhatsApp and SMS both dial the phone number.
+ *
+ * THE list — the add form, the contact card's switches and the mock all read
+ * it, so a channel is never enabled against a detail that isn't there.
+ */
+export const CONTACT_CHANNELS = [
+  { key: "channel_email", label: "Email", detail: "email" },
+  { key: "channel_whatsapp", label: "WhatsApp", detail: "phone" },
+  { key: "channel_sms", label: "SMS", detail: "phone" },
+] as const satisfies readonly {
+  key: keyof ContactChannels;
+  label: string;
+  detail: "email" | "phone";
+}[];
+
+/** The channel flags every contact carries. */
+export type ContactChannels = {
+  channel_email: boolean;
+  channel_whatsapp: boolean;
+  channel_sms: boolean;
+};
+
+export type ContactChannelKey = (typeof CONTACT_CHANNELS)[number]["key"];
+
+/**
+ * What the channel rule reads, on a stored contact, a create body or a merged
+ * patch alike. Every field is optional: a PATCH carries only what changed, and
+ * the caller merges before asking.
+ */
+export type ContactChannelFacts = {
+  email?: string | null | undefined;
+  phone?: string | null | undefined;
+  channel_email?: boolean | undefined;
+  channel_whatsapp?: boolean | undefined;
+  channel_sms?: boolean | undefined;
+};
+
+/**
+ * Why `channel` cannot be on for this contact, or null when it can.
+ *
+ * A channel switched on with nothing to send to queues reminders against
+ * nothing: the account looks chased and never is. Mirrored by the
+ * `contacts_channel_reachable` check constraint, because the form is not the
+ * only writer.
+ */
+export function channelBlockedReason(
+  contact: ContactChannelFacts,
+  channel: ContactChannelKey,
+): string | null {
+  const spec = CONTACT_CHANNELS.find((c) => c.key === channel);
+  if (!spec) return null;
+  const detail = spec.detail === "email" ? contact.email : contact.phone;
+  if ((detail ?? "").trim() !== "") return null;
+  return spec.detail === "email"
+    ? `${spec.label} needs an address to send to.`
+    : `${spec.label} needs a phone number.`;
+}
+
+/** Every channel that is on but has nothing to send to, in `CONTACT_CHANNELS` order. */
+export function blockedChannels(
+  contact: ContactChannelFacts,
+): { key: ContactChannelKey; reason: string }[] {
+  const blocked: { key: ContactChannelKey; reason: string }[] = [];
+  for (const spec of CONTACT_CHANNELS) {
+    if (!contact[spec.key]) continue;
+    const reason = channelBlockedReason(contact, spec.key);
+    if (reason) blocked.push({ key: spec.key, reason });
+  }
+  return blocked;
+}
+
 export const createContactBodySchema = contactBodyShape.refine(dncReasonIsPresent, {
   message: "Add a reason before marking a contact do-not-contact.",
   path: ["dnc_reason"],
@@ -518,6 +599,52 @@ export const updateChasingSettingsBodySchema = z
 /** `POST /api/v1/accounts/{id}/archive` — server re-checks the typed name. */
 export const archiveAccountBodySchema = z.object({
   confirm_name: z.string(),
+});
+
+/**
+ * One account name, as typed in the manual form or read out of an import's
+ * account column. 200 matches the `name` column and the invoice number's own
+ * cap; the trim is what the database stores, so validating the untrimmed
+ * string would let " " through.
+ */
+export const accountNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Enter the customer's name.")
+  .max(200, "That name is longer than 200 characters.");
+
+/**
+ * `POST /api/v1/accounts` — resolve names to accounts, creating the new ones.
+ *
+ * A batch because the import path is the reason this exists: a 500-row CSV can
+ * name hundreds of customers, and one request per name is not a design. The
+ * manual form sends a single name in the same shape.
+ */
+export const ensureAccountsBodySchema = z.object({
+  names: z.array(accountNameSchema).min(1).max(500),
+});
+
+/**
+ * What each requested name resolved to. `created` distinguishes a new account
+ * from a match on an existing one — the two need different copy, since a
+ * silent match on a name the user thought was new is a surprise worth naming.
+ */
+export const ensuredAccountSchema = z.object({
+  /**
+   * The name as the caller sent it. Present because `name` is the account's
+   * own name, which for a match is whatever the org already called this
+   * customer — "Sharma Traders" coming back for a requested "Sharma Traders
+   * Pvt Ltd". Without the echo a caller cannot tell which of its names this
+   * row answers.
+   */
+  requested_name: z.string().min(1),
+  account_id: z.string().uuid(),
+  name: z.string().min(1),
+  created: z.boolean(),
+});
+
+export const ensureAccountsResultSchema = z.object({
+  accounts: z.array(ensuredAccountSchema),
 });
 
 export const accountSettingsFormSchema = z
@@ -608,6 +735,9 @@ export type UpdateContactBody = z.infer<typeof updateContactBodySchema>;
 export type UpdateEscalationBody = z.infer<typeof updateEscalationBodySchema>;
 export type UpdateChasingSettingsBody = z.infer<typeof updateChasingSettingsBodySchema>;
 export type ArchiveAccountBody = z.infer<typeof archiveAccountBodySchema>;
+export type EnsureAccountsBody = z.infer<typeof ensureAccountsBodySchema>;
+export type EnsuredAccount = z.infer<typeof ensuredAccountSchema>;
+export type EnsureAccountsResult = z.infer<typeof ensureAccountsResultSchema>;
 export type AccountSettingsFormValues = z.infer<typeof accountSettingsFormSchema>;
 export type PauseAccountBody = z.infer<typeof pauseAccountBodySchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;

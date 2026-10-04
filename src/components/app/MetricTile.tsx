@@ -51,7 +51,7 @@ export function MetricTile({
         className={cn(
           // `tnum` is the tokens file's tabular-numerals hook. Tiles sit in a
           // row and their digits should line up across cards.
-          // nowrap is the overflow test: ₹4,20,00,000 must stay on one line
+          // nowrap is the overflow test: ₹4,20,00,000.00 must stay on one line
           // and must not clip. Truncation would fail the spec; wrapping would
           // too. The tile is allowed to grow.
           "tnum block whitespace-nowrap text-metric font-bold tracking-tight",

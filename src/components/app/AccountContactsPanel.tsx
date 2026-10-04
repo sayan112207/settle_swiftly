@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { AppButton } from "@/components/app/AppButton";
 import { AppSkeleton } from "@/components/app/AppSkeleton";
+import { ContactForm } from "@/components/app/ContactForm";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,25 +13,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { formatCalendarDaysSince } from "@/lib/format";
 import {
+  useCreateAccountContact,
   useDeleteAccountContact,
   useUpdateAccountContact,
   useUpdateAccountEscalation,
 } from "@/lib/queries/account-contacts";
-import type {
-  AccountContact,
-  AccountContacts,
-  ContactLanguage,
-  ContactTier,
-  UpdateContactBody,
+import {
+  channelBlockedReason,
+  CONTACT_CHANNELS,
+  type AccountContact,
+  type AccountContacts,
+  type ContactLanguage,
+  type ContactTier,
+  type CreateContactBody,
+  type UpdateContactBody,
 } from "@/lib/schemas/accounts";
+import { fromContact, toUpdateBody, type ContactFormValues } from "@/lib/schemas/contact-form";
 import { AccountsApiError, accountsQueryKeys, getAccountContacts } from "@/lib/services/accounts";
 import { cn } from "@/lib/utils";
-
-/**
- * Controls whose flow does not exist yet are disabled rather than left live.
- * An enabled button that does nothing reads as a broken app, not a pending one.
- */
-const ADD_CONTACT_PENDING = "Adding and replacing contacts is not in this build yet.";
 
 const TIERS: {
   id: ContactTier;
@@ -69,16 +69,26 @@ type AccountContactsPanelProps = {
   accountId: string;
   /** Archived accounts: every control is disabled until the account is restored. */
   readOnly?: boolean;
+  /** Open this tier's add-contact form on arrival (the `?add=` search param). */
+  openAddFor?: ContactTier | undefined;
+  /** Called once that form is submitted or dismissed, so the param can be dropped. */
+  onAddFormClosed?: (() => void) | undefined;
 };
 
 /** The Contacts tab: the P0/P1/P2 ladder and escalation timing. `readOnly` disables every control. */
-export function AccountContactsPanel({ accountId, readOnly = false }: AccountContactsPanelProps) {
+export function AccountContactsPanel({
+  accountId,
+  readOnly = false,
+  openAddFor,
+  onAddFormClosed,
+}: AccountContactsPanelProps) {
   const contactsQuery = useQuery({
     queryKey: accountsQueryKeys.contacts(accountId),
     queryFn: () => getAccountContacts(accountId),
     retry: false,
   });
 
+  const createContact = useCreateAccountContact(accountId);
   const updateContact = useUpdateAccountContact(accountId);
   const deleteContact = useDeleteAccountContact(accountId);
   const updateEscalation = useUpdateAccountEscalation(accountId);
@@ -141,7 +151,11 @@ export function AccountContactsPanel({ accountId, readOnly = false }: AccountCon
   const data = contactsQuery.data;
   if (!data) return null;
 
-  const mutating = updateContact.isPending || deleteContact.isPending || updateEscalation.isPending;
+  const mutating =
+    createContact.isPending ||
+    updateContact.isPending ||
+    deleteContact.isPending ||
+    updateEscalation.isPending;
 
   return (
     <div className="flex flex-col gap-4">
@@ -153,17 +167,33 @@ export function AccountContactsPanel({ accountId, readOnly = false }: AccountCon
       <ContactsLadder
         data={data}
         busy={mutating || readOnly}
-        onUpdate={(contactId, body) => {
+        openAddFor={readOnly ? undefined : openAddFor}
+        onAddFormClosed={onAddFormClosed}
+        onUpdate={(contactId, body, done) => {
           runExclusive((release) =>
             updateContact.mutate(
               { contactId, body, ifMatch: data.updated_at },
-              { onSettled: release },
+              {
+                onSuccess: () => done?.(),
+                onSettled: release,
+              },
             ),
           );
         }}
         onDelete={(contactId) => {
           runExclusive((release) =>
             deleteContact.mutate({ contactId, ifMatch: data.updated_at }, { onSettled: release }),
+          );
+        }}
+        onCreate={(body, done) => {
+          runExclusive((release) =>
+            createContact.mutate(
+              { body, ifMatch: data.updated_at },
+              {
+                onSuccess: () => done(),
+                onSettled: release,
+              },
+            ),
           );
         }}
         onSaveEscalation={(body) => {
@@ -176,19 +206,87 @@ export function AccountContactsPanel({ accountId, readOnly = false }: AccountCon
   );
 }
 
+/**
+ * The three tier groups, each with its contacts and an add-contact form, plus
+ * the escalation timing beneath. One add-form is open at a time: two would
+ * both carry the same `If-Match` token, and the second to submit would be
+ * refused as a stale write.
+ */
 function ContactsLadder({
   data,
   busy,
+  openAddFor,
+  onAddFormClosed,
   onUpdate,
   onDelete,
+  onCreate,
   onSaveEscalation,
 }: {
   data: AccountContacts;
   busy: boolean;
-  onUpdate: (contactId: string, body: UpdateContactBody) => void;
+  openAddFor?: ContactTier | undefined;
+  onAddFormClosed?: (() => void) | undefined;
+  /** `done` closes the edit form; like `onCreate`, only on a server-accepted write. */
+  onUpdate: (contactId: string, body: UpdateContactBody, done?: () => void) => void;
   onDelete: (contactId: string) => void;
+  /** `done` closes the form; it runs only when the server accepted the contact. */
+  onCreate: (body: CreateContactBody, done: () => void) => void;
   onSaveEscalation: (body: { p1_after_days: number; p2_after_days: number }) => void;
 }) {
+  /** Which tier's add-form is open, if any. One at a time. */
+  const [addingTo, setAddingTo] = useState<ContactTier | null>(openAddFor ?? null);
+
+  /**
+   * Which contact's card has been swapped for an edit form, if any, and the
+   * values that form was opened with.
+   *
+   * One write form open at a time, add included, for the reason the add forms
+   * are already exclusive: every form on this panel submits with the same
+   * `If-Match` token, and the second to submit would be refused as a stale
+   * write after the user had filled it in.
+   *
+   * The snapshot is kept because the card behind the form keeps re-rendering
+   * from the query: by submit time `contact` may be somebody else's newer copy,
+   * and `toUpdateBody` has to diff against what this user was actually shown.
+   */
+  const [editing, setEditing] = useState<{ id: string; opened: ContactFormValues } | null>(null);
+
+  /**
+   * Saves an edit, sending only what this user changed.
+   *
+   * An edit that changed nothing closes without a write: the PATCH would be
+   * empty, and the ladder would still bump its version and log a
+   * `contact_edited` row saying nothing happened.
+   */
+  function saveEdit(contactId: string, opened: ContactFormValues, edited: CreateContactBody) {
+    const patch = toUpdateBody(opened, edited);
+    if (Object.keys(patch).length === 0) {
+      setEditing(null);
+      return;
+    }
+    onUpdate(contactId, patch, () => setEditing(null));
+  }
+
+  function openEditor(contact: AccountContact) {
+    setAddingTo(null);
+    onAddFormClosed?.();
+    setEditing({ id: contact.contact_id, opened: fromContact(contact) });
+  }
+
+  // Arriving with `?add=` again — clicking the strip from another tab, or a
+  // second link — must reopen the form even though the component stayed mounted.
+  useEffect(() => {
+    if (openAddFor) {
+      setEditing(null);
+      setAddingTo(openAddFor);
+    }
+  }, [openAddFor]);
+
+  /** Closing always clears the search param, whoever opened the form. */
+  function closeAddForm() {
+    setAddingTo(null);
+    onAddFormClosed?.();
+  }
   const [p1Days, setP1Days] = useState(data.p1_after_days);
   const [p2Days, setP2Days] = useState(data.p2_after_days);
   const p1Ref = useRef(p1Days);
@@ -236,7 +334,16 @@ function ContactsLadder({
                 <p className="mt-1 text-prose font-normal text-fg-muted">{tier.description}</p>
               </div>
 
-              {tier.id === "P0" && bouncedP0 ? <BounceWarningStrip contact={bouncedP0} /> : null}
+              {tier.id === "P0" && bouncedP0 ? (
+                <BounceWarningStrip
+                  contact={bouncedP0}
+                  busy={busy}
+                  onAdd={() => {
+                    setEditing(null);
+                    setAddingTo("P0");
+                  }}
+                />
+              ) : null}
 
               {tier.id === "P0" && !hasUsableP0 ? (
                 <div className="rounded-card border border-danger-edge bg-danger-tint p-4">
@@ -244,7 +351,14 @@ function ContactsLadder({
                     No primary contact. This account can't be chased.
                   </p>
                   <div className="mt-3">
-                    <AppButton variant="primary" disabled title={ADD_CONTACT_PENDING}>
+                    <AppButton
+                      variant="primary"
+                      disabled={busy}
+                      onClick={() => {
+                        setEditing(null);
+                        setAddingTo("P0");
+                      }}
+                    >
                       Add a contact
                     </AppButton>
                   </div>
@@ -252,20 +366,49 @@ function ContactsLadder({
               ) : null}
 
               <div className="space-y-3">
-                {tierContacts.map((contact) => (
-                  <ContactCard
-                    key={contact.contact_id}
-                    contact={contact}
-                    busy={busy}
-                    onUpdate={onUpdate}
-                    onDelete={onDelete}
-                  />
-                ))}
+                {tierContacts.map((contact) =>
+                  editing?.id === contact.contact_id ? (
+                    <ContactForm
+                      key={contact.contact_id}
+                      tier={contact.tier}
+                      initial={editing.opened}
+                      busy={busy}
+                      submitLabel="Save changes"
+                      onCancel={() => setEditing(null)}
+                      onSubmit={(values) => saveEdit(contact.contact_id, editing.opened, values)}
+                    />
+                  ) : (
+                    <ContactCard
+                      key={contact.contact_id}
+                      contact={contact}
+                      busy={busy}
+                      onUpdate={onUpdate}
+                      onDelete={onDelete}
+                      onEdit={() => openEditor(contact)}
+                    />
+                  ),
+                )}
               </div>
 
-              <AppButton variant="secondary" disabled title={ADD_CONTACT_PENDING}>
-                + Add contact
-              </AppButton>
+              {addingTo === tier.id ? (
+                <ContactForm
+                  tier={tier.id}
+                  busy={busy}
+                  onCancel={closeAddForm}
+                  onSubmit={(body) => onCreate(body, closeAddForm)}
+                />
+              ) : (
+                <AppButton
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setEditing(null);
+                    setAddingTo(tier.id);
+                  }}
+                >
+                  + Add contact
+                </AppButton>
+              )}
             </section>
           );
         })}
@@ -318,7 +461,19 @@ function ContactsLadder({
   );
 }
 
-function BounceWarningStrip({ contact }: { contact: AccountContact }) {
+/**
+ * Shown when the usable P0's email is bouncing — the account looks chaseable
+ * and is not, so the strip names who is failing and how long it has been.
+ */
+function BounceWarningStrip({
+  contact,
+  busy,
+  onAdd,
+}: {
+  contact: AccountContact;
+  busy: boolean;
+  onAdd: () => void;
+}) {
   const days = contact.last_bounced_at
     ? formatCalendarDaysSince(contact.last_bounced_at)
     : Number.NaN;
@@ -337,25 +492,38 @@ function BounceWarningStrip({ contact }: { contact: AccountContact }) {
         <span className="font-bold">{contact.name}'s email is bouncing.</span> Nothing has reached
         this account since {ago}.
       </p>
-      <AppButton variant="secondary" disabled title={ADD_CONTACT_PENDING}>
-        Replace contact
+      {/* "Replace" is two operations: add someone reachable, then retire the
+          bouncing one from its own card menu. This button does the first, and
+          says so — the old label promised a flow that does not exist. */}
+      <AppButton variant="secondary" disabled={busy} onClick={onAdd}>
+        Add a working contact
       </AppButton>
     </div>
   );
 }
 
+/**
+ * One saved contact: who they are, which tier they sit on, and every per-contact
+ * switch. Editing their details is not inline here — the `⋯` menu swaps the
+ * whole card for the contact form, so a name, an address and a phone number are
+ * corrected in one submit rather than field by field.
+ */
 function ContactCard({
   contact,
   busy,
   onUpdate,
   onDelete,
+  onEdit,
 }: {
   contact: AccountContact;
   busy: boolean;
   onUpdate: (contactId: string, body: UpdateContactBody) => void;
   onDelete: (contactId: string) => void;
+  /** Opens this contact's edit form. The ladder owns which one is open. */
+  onEdit: () => void;
 }) {
   const [dncReason, setDncReason] = useState(contact.dnc_reason ?? "");
+  const missingDetail = missingChannelDetail(contact);
 
   return (
     <article className="rounded-card border border-hairline bg-card p-4">
@@ -406,6 +574,13 @@ function ContactCard({
               align="end"
               className="rounded-card border-hairline bg-card shadow-overlay"
             >
+              <DropdownMenuItem
+                disabled={busy}
+                className="cursor-pointer text-body font-semibold focus:bg-hovered"
+                onSelect={() => onEdit()}
+              >
+                Edit contact
+              </DropdownMenuItem>
               {(["P0", "P1", "P2"] as const).map((tier) => (
                 <DropdownMenuItem
                   key={tier}
@@ -429,27 +604,20 @@ function ContactCard({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <ChannelSwitch
-          label="Email"
-          name={contact.name}
-          busy={busy}
-          checked={contact.channel_email}
-          onCheckedChange={(checked) => onUpdate(contact.contact_id, { channel_email: checked })}
-        />
-        <ChannelSwitch
-          label="WhatsApp"
-          name={contact.name}
-          busy={busy}
-          checked={contact.channel_whatsapp}
-          onCheckedChange={(checked) => onUpdate(contact.contact_id, { channel_whatsapp: checked })}
-        />
-        <ChannelSwitch
-          label="SMS"
-          name={contact.name}
-          busy={busy}
-          checked={contact.channel_sms}
-          onCheckedChange={(checked) => onUpdate(contact.contact_id, { channel_sms: checked })}
-        />
+        {CONTACT_CHANNELS.map((channel) => (
+          <ChannelSwitch
+            key={channel.key}
+            label={channel.label}
+            name={contact.name}
+            busy={busy}
+            checked={contact[channel.key]}
+            // A channel already on stays switchable off whatever the contact is
+            // missing — turning it off is the fix, so it can never be the thing
+            // that is blocked.
+            blockedReason={contact[channel.key] ? null : channelBlockedReason(contact, channel.key)}
+            onCheckedChange={(checked) => onUpdate(contact.contact_id, { [channel.key]: checked })}
+          />
+        ))}
         <ChannelSwitch
           label="Always CC"
           name={contact.name}
@@ -470,6 +638,12 @@ function ContactCard({
           }
         />
       </div>
+
+      {missingDetail ? (
+        <p className="mt-2 text-prose font-normal text-fg-muted">
+          {missingDetail} Add one from <span className="font-semibold">Edit contact</span>.
+        </p>
+      ) : null}
 
       {contact.do_not_contact ? (
         <label className="mt-3 block text-prose font-semibold text-fg-muted">
@@ -513,30 +687,80 @@ function ContactCard({
   );
 }
 
+/**
+ * Why this contact's off channels can't be switched on, as one sentence, or
+ * null when nothing is missing.
+ *
+ * `contacts_reachable` guarantees an email or a phone, so in practice only one
+ * of the two can be absent — but both are composed here rather than assumed,
+ * because this renders whatever the server sent.
+ */
+function missingChannelDetail(contact: AccountContact): string | null {
+  const needs = (detail: "email" | "phone") =>
+    CONTACT_CHANNELS.filter(
+      (channel) =>
+        channel.detail === detail &&
+        !contact[channel.key] &&
+        channelBlockedReason(contact, channel.key),
+    ).map((channel) => channel.label);
+
+  const parts: string[] = [];
+  const needsEmail = needs("email");
+  const needsPhone = needs("phone");
+  if (needsEmail.length > 0) parts.push(`${listOf(needsEmail)} needs an address to send to.`);
+  if (needsPhone.length > 0) {
+    parts.push(`${listOf(needsPhone)} ${needsPhone.length > 1 ? "need" : "needs"} a phone number.`);
+  }
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
+/** `["WhatsApp", "SMS"]` → `"WhatsApp and SMS"`. */
+function listOf(labels: string[]): string {
+  return labels.length > 1
+    ? `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`
+    : (labels[0] ?? "");
+}
+
+/**
+ * One channel or per-contact flag, as a switch.
+ *
+ * `blockedReason` disables it rather than letting the click through: a channel
+ * with nothing to send to is refused by the mock and by the
+ * `contacts_channel_reachable` constraint, so allowing the toggle would buy a
+ * round trip and a toast in place of an answer the card already has.
+ */
 function ChannelSwitch({
   label,
   name,
   checked,
   busy,
+  blockedReason = null,
   onCheckedChange,
 }: {
   label: string;
   name: string;
   checked: boolean;
   busy: boolean;
+  /** Set when switching this channel on would queue reminders against nothing. */
+  blockedReason?: string | null;
   onCheckedChange: (checked: boolean) => void;
 }) {
+  const blocked = blockedReason !== null;
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={`${label} for ${name}`}
-      disabled={busy}
+      // The card's own line below says the same thing for anyone who cannot
+      // hover; `title` is the pointer shortcut, not the only explanation.
+      title={blockedReason ?? undefined}
+      disabled={busy || blocked}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
         "rounded-pill px-2.5 py-1 text-pill font-semibold transition-colors duration-150 disabled:opacity-60",
         checked ? "bg-accent-tint text-accent" : "bg-alt text-fg-soft",
+        blocked && "cursor-not-allowed",
       )}
     >
       {label}

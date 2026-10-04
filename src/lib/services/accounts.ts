@@ -12,6 +12,8 @@ import {
   accountsSortDirSchema,
   archiveAccountBodySchema,
   createContactBodySchema,
+  ensureAccountsBodySchema,
+  ensureAccountsResultSchema,
   pauseAccountBodySchema,
   updateChasingSettingsBodySchema,
   updateContactBodySchema,
@@ -27,6 +29,7 @@ import {
   type AccountsView,
   type ArchiveAccountBody,
   type CreateContactBody,
+  type EnsureAccountsResult,
   type PauseAccountBody,
   type UpdateChasingSettingsBody,
   type UpdateContactBody,
@@ -44,6 +47,7 @@ import {
   mockArchiveAccount,
   mockCreateContact,
   mockDeleteContact,
+  mockEnsureAccounts,
   mockPauseAccount,
   mockRestoreAccount,
   mockResumeAccount,
@@ -283,6 +287,30 @@ export async function getAccounts(params: AccountsListParams = {}): Promise<Acco
     headers: { Accept: "application/json" },
   });
   return accountsListSchema.parse(body);
+}
+
+/**
+ * `POST /api/v1/accounts` — resolve account names to ids, creating the ones
+ * this org does not have yet.
+ *
+ * Names are matched on the database's normalized form, so a caller cannot
+ * predict which of its names will come back `created: false`. Read the result
+ * rather than assuming the batch was all new.
+ */
+export async function ensureAccounts(names: readonly string[]): Promise<EnsureAccountsResult> {
+  const payload = ensureAccountsBodySchema.parse({ names });
+
+  if (getPublicEnv().useAccountsMocks) {
+    await delay(MOCK_DELAY_MS);
+    return ensureAccountsResultSchema.parse(mockEnsureAccounts(payload.names));
+  }
+
+  const body = await requestJson("/accounts", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return ensureAccountsResultSchema.parse(body);
 }
 
 /** `GET /api/v1/accounts/{id}` */

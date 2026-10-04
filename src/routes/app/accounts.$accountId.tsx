@@ -24,7 +24,9 @@ import {
 import {
   accountDetailSearchSchema,
   type AccountDetail,
+  type AccountDetailSearch,
   type AccountDetailTab,
+  type ContactTier,
   type AccountInvoices,
 } from "@/lib/schemas/accounts";
 import {
@@ -51,7 +53,7 @@ export const Route = createFileRoute("/app/accounts/$accountId")({
 /** One account: header, archived banner, aging, recommendation and the five tabs. */
 function AccountDetailPage() {
   const { accountId } = Route.useParams();
-  const { tab } = Route.useSearch();
+  const { tab, add } = Route.useSearch();
   const navigate = Route.useNavigate();
 
   const detailQuery = useQuery({
@@ -115,6 +117,12 @@ function AccountDetailPage() {
         detail={detail}
         tab={tab}
         onTabChange={setTab}
+        openAddFor={add}
+        onAddFormClosed={() => {
+          // Drop the param once the form is dealt with, so a refresh or a
+          // shared link does not reopen a form they already closed.
+          void navigate({ search: (prev: AccountDetailSearch) => ({ ...prev, add: undefined }) });
+        }}
         invoices={{
           accountName: detail.name,
           data: invoicesQuery.data,
@@ -257,6 +265,8 @@ function AccountDetailTabs({
   detail,
   tab,
   onTabChange,
+  openAddFor,
+  onAddFormClosed,
   invoices,
 }: {
   accountId: string;
@@ -264,6 +274,8 @@ function AccountDetailTabs({
   detail: AccountDetail;
   tab: AccountDetailTab;
   onTabChange: (tab: AccountDetailTab) => void;
+  openAddFor: ContactTier | undefined;
+  onAddFormClosed: () => void;
   invoices: {
     accountName: string;
     data: AccountInvoices | undefined;
@@ -362,6 +374,8 @@ function AccountDetailTabs({
               <AccountContactsPanel
                 accountId={accountId}
                 readOnly={detail.settings.archived_at !== null}
+                openAddFor={openAddFor}
+                onAddFormClosed={onAddFormClosed}
               />
             ) : null}
             {selected && item.id === "payments" ? (

@@ -216,14 +216,24 @@ function AccountsPage() {
           <h1 className="text-title font-bold tracking-tight text-fg">Accounts</h1>
           <MetricStrip query={listQuery} />
         </div>
-        <AppButton
-          variant="primary"
-          onClick={() => {
-            void navigate({ to: "/app/add-entries" });
-          }}
-        >
-          Add entries
-        </AppButton>
+        <div className="flex flex-wrap items-center gap-3">
+          <AppButton
+            variant="secondary"
+            onClick={() => {
+              void navigate({ to: "/app/accounts/new" });
+            }}
+          >
+            New account
+          </AppButton>
+          <AppButton
+            variant="primary"
+            onClick={() => {
+              void navigate({ to: "/app/add-entries" });
+            }}
+          >
+            Add entries
+          </AppButton>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -256,6 +266,9 @@ function AccountsPage() {
           }}
           onAddEntries={() => {
             void navigate({ to: "/app/add-entries" });
+          }}
+          onUploadFile={() => {
+            void navigate({ to: "/app/add-entries", search: { mode: "upload" } });
           }}
         />
       </div>
@@ -446,6 +459,7 @@ function AccountsBody({
   onClearFilters,
   onRetry,
   onAddEntries,
+  onUploadFile,
 }: {
   query: ReturnType<typeof useQuery<Awaited<ReturnType<typeof getAccounts>>>>;
   archivedView: boolean;
@@ -454,6 +468,7 @@ function AccountsBody({
   onClearFilters: () => void;
   onRetry: () => void;
   onAddEntries: () => void;
+  onUploadFile: () => void;
 }) {
   if (query.isPending) {
     return <AccountsLoading />;
@@ -501,9 +516,7 @@ function AccountsBody({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {/* Import is not in this build. The one control here that leads
-              somewhere is the manual path, so it is the only live one. */}
-          <AppButton variant="primary" disabled title="File import is not in this build yet.">
+          <AppButton variant="primary" onClick={onUploadFile}>
             Upload a file
           </AppButton>
           <AppButton variant="secondary" onClick={onAddEntries}>

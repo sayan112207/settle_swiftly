@@ -27,6 +27,7 @@ import type {
   ChaseStopReason,
   ContactTier,
   DeliveryState,
+  EnsureAccountsResult,
   PauseReason,
   PaymentSource,
   TdsSection,
@@ -39,6 +40,7 @@ import {
   accountsSortDirSchema,
   archiveAccountBodySchema,
   createContactBodySchema,
+  ensureAccountsBodySchema,
   pauseAccountBodySchema,
   updateChasingSettingsBodySchema,
   updateContactBodySchema,
@@ -376,7 +378,9 @@ async function loadSettings(context: AccountContext): Promise<AccountChasingSett
 
 /** The action strip for an account nobody can be chased on, or null. */
 function recommendation(state: AccountState): AccountDetail["recommendation"] {
-  const contactsHref = `/app/accounts/${state.row.id}?tab=contacts`;
+  // `add=P0` opens the form, not just the tab — both recommendations exist to
+  // get a reachable P0 onto this account.
+  const contactsHref = `/app/accounts/${state.row.id}?tab=contacts&add=P0`;
   if (state.status === "no_p0") {
     return {
       sentence: "Nobody on this account can be chased yet. Add a P0 contact to start.",
@@ -678,6 +682,37 @@ async function rpc(
 ): Promise<void> {
   const { error } = await caller.supabase.rpc(fn, args as never);
   if (error) throw error;
+}
+
+/**
+ * `POST /api/v1/accounts` — resolve account names to ids, creating the ones
+ * the org does not have yet.
+ *
+ * Unlike the per-account mutations this does not return the full updated
+ * resource. The "resource" being changed is the accounts list, and the two
+ * callers — the manual form's account picker and the importer's name column —
+ * need one thing from it: the id to hang an invoice on. Shipping the whole
+ * list (a book load) on every save to satisfy the shape would cost more than
+ * the refetch the frontend already does after invalidating.
+ */
+export async function ensureAccounts(body: unknown): Promise<EnsureAccountsResult> {
+  const payload = parseBody(ensureAccountsBodySchema, body);
+  const caller = await resolveCaller();
+
+  const { data, error } = await caller.supabase.rpc("accounts_ensure", {
+    p_org: caller.orgId,
+    p_names: payload.names,
+  });
+  if (error) throw error;
+
+  return {
+    accounts: (data ?? []).map((row) => ({
+      requested_name: row.requested_name,
+      account_id: row.account_id,
+      name: row.account_name,
+      created: row.was_created,
+    })),
+  };
 }
 
 /** `POST /api/v1/accounts/{id}/contacts` */

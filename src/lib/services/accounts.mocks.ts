@@ -16,7 +16,11 @@ import type {
   CadenceRecipients,
   CadenceStep,
   CadenceTone,
+  ChaseStatus,
+  ContactPip,
+  ContactTier,
   CreateContactBody,
+  EnsureAccountsResult,
   EscalationContact,
   PauseAccountBody,
   UpdateChasingSettingsBody,
@@ -24,7 +28,9 @@ import type {
   UpdateEscalationBody,
 } from "@/lib/schemas/accounts";
 import { updateChasingSettingsBodySchema } from "@/lib/schemas/accounts";
-import { dncReasonIsPresent } from "@/lib/schemas/accounts";
+import { CHASE_STATUS_LABEL } from "@/lib/services/accounts-rules";
+import { blockedChannels, dncReasonIsPresent } from "@/lib/schemas/accounts";
+import type { ContactChannelFacts } from "@/lib/schemas/accounts";
 
 /**
  * Fixture data for `VITE_USE_MOCKS=true`, figures from `docs/accounts-spec.md`.
@@ -646,7 +652,7 @@ export const sharmaContactsFixture: AccountContacts = {
   ],
 };
 
-/** Sharma Traders — five payments; ₹8,000 unapplied on the Statement receipt. */
+/** Sharma Traders — five payments; ₹8,000.00 unapplied on the Statement receipt. */
 export const sharmaPaymentsFixture: AccountPayments = {
   stats: {
     received_90d: "618000.00",
@@ -662,7 +668,7 @@ export const sharmaPaymentsFixture: AccountPayments = {
       amount: "108000.00",
       applied_to: "INV-1041",
       is_applied: true,
-      status_label: "TDS shortfall ₹10,000",
+      status_label: "TDS shortfall ₹10,000.00",
       status_tone: "warn",
       action_label: "Adjust",
       action_kind: "adjust",
@@ -767,7 +773,7 @@ export const sharmaActivityFixture: AccountActivity = {
       occurred_at: "2026-08-17T09:12:00+05:30",
       title: "Standard reminder sent to Rajat Mehta",
       title_tone: "neutral",
-      detail: "Invoice INV-1042 — ₹54,000. Delivered 09:13.",
+      detail: "Invoice INV-1042 — ₹54,000.00. Delivered 09:13.",
       link_label: null,
       link_href: null,
     },
@@ -778,7 +784,8 @@ export const sharmaActivityFixture: AccountActivity = {
       occurred_at: "2026-08-12T16:40:00+05:30",
       title: "Promised 22 Aug 2026",
       title_tone: "warn",
-      detail: "Rajat Mehta committed to ₹54,000 from the debtor page. Reminders paused until then.",
+      detail:
+        "Rajat Mehta committed to ₹54,000.00 from the debtor page. Reminders paused until then.",
       link_label: null,
       link_href: null,
     },
@@ -787,9 +794,9 @@ export const sharmaActivityFixture: AccountActivity = {
       kind: "payment_received",
       when_label: "08 Aug · 11:02",
       occurred_at: "2026-08-08T11:02:00+05:30",
-      title: "Payment received — ₹1,08,000",
+      title: "Payment received — ₹1,08,000.00",
       title_tone: "neutral",
-      detail: "Against INV-1041. ₹10,000 shortfall explained as 194J TDS.",
+      detail: "Against INV-1041. ₹10,000.00 shortfall explained as 194J TDS.",
       link_label: null,
       link_href: null,
     },
@@ -822,7 +829,7 @@ export const sharmaActivityFixture: AccountActivity = {
       occurred_at: "2026-07-28T10:44:00+05:30",
       title: "9 invoices imported from Tally",
       title_tone: "neutral",
-      detail: "₹4,82,000 total.",
+      detail: "₹4,82,000.00 total.",
       link_label: null,
       link_href: null,
     },
@@ -960,6 +967,15 @@ type MockStore = {
   details: Record<string, AccountDetail>;
   invoices: Record<string, AccountInvoices>;
   contacts: Record<string, AccountContacts>;
+  /**
+   * Accounts whose stored ladder is the whole truth.
+   *
+   * Most list rows carry contact pips but no ladder fixture, so the first read
+   * synthesizes an empty one. That empty ladder is not the account's contacts,
+   * and recomputing a summary from it would report Meridian — `p0: "present"`,
+   * Active — as having no primary contact the moment anyone adds a P1.
+   */
+  ladderComplete: Set<string>;
   payments: Record<string, AccountPayments>;
   activity: Record<string, AccountActivity>;
 };
@@ -981,6 +997,8 @@ function seedStore(): MockStore {
       [ACCOUNT_IDS.sharma]: structuredClone(sharmaContactsFixture),
       [ACCOUNT_IDS.kaveri]: structuredClone(kaveriContactsFixture),
     },
+    // The two ladder fixtures are complete by construction.
+    ladderComplete: new Set([ACCOUNT_IDS.sharma, ACCOUNT_IDS.kaveri]),
     payments: {
       [ACCOUNT_IDS.sharma]: structuredClone(sharmaPaymentsFixture),
     },
@@ -1018,9 +1036,55 @@ export function getMockAccountDetail(accountId: string): AccountDetail | undefin
   return synthesizeDetailFromListItem(listItem);
 }
 
+/**
+ * The account's chase status as the store currently holds it.
+ *
+ * Detail first, row second. Pausing writes `chase_status` onto the detail and
+ * never touches the list row, so reading the row first would report a paused
+ * account as whatever it was before the pause — and the invoice rows would
+ * never say chasing is paused.
+ */
+function currentChaseStatus(accountId: string): ChaseStatus | null {
+  const row = [...mockStore.list.items, ...mockStore.archived].find(
+    (item) => item.account_id === accountId,
+  );
+  return mockStore.details[accountId]?.chase_status ?? row?.chase_status ?? null;
+}
+
+/**
+ * Applies the account-level chase reason over each invoice's own.
+ *
+ * Derived on read rather than written into the store, which is what the real
+ * API does and the only way the two reasons can both survive: an account-level
+ * reason wins while it applies, and the invoice's own ("Disputed", "Promised")
+ * is still there underneath when the account becomes chaseable again. Writing
+ * the account reason into the rows would overwrite that fact and lose it.
+ */
+function withAccountChaseReasons(accountId: string, invoices: AccountInvoices): AccountInvoices {
+  const status = currentChaseStatus(accountId);
+  if (status === null) return invoices;
+  const accountReason = accountChaseDisabledReason(status, mockStore.contacts[accountId]);
+
+  return {
+    ...invoices,
+    groups: invoices.groups.map((group) => ({
+      ...group,
+      invoices: group.invoices.map((invoice) => {
+        // A stored account-level reason is the fixture's snapshot of this same
+        // derivation, not something the invoice owns.
+        const own = isAccountLevelChaseReason(invoice.chase_disabled_reason)
+          ? null
+          : invoice.chase_disabled_reason;
+        return { ...invoice, chase_disabled_reason: accountReason ?? own };
+      }),
+    })),
+  };
+}
+
+/** The stored invoice groups, with the account-level chase reason applied over each row. */
 export function getMockAccountInvoices(accountId: string): AccountInvoices | undefined {
   const invoices = mockStore.invoices[accountId];
-  if (invoices) return structuredClone(invoices);
+  if (invoices) return structuredClone(withAccountChaseReasons(accountId, invoices));
 
   // Account exists but has no invoice fixture yet — empty groups, not a 404.
   if (accountExists(accountId)) {
@@ -1078,7 +1142,8 @@ function synthesizeDetailFromListItem(item: AccountListItem): AccountDetail {
   };
 }
 
-function headerStatusFor(item: AccountListItem): string {
+/** The header line for a chase status, as the backend composes it. */
+function headerStatusFor(item: { chase_status: ChaseStatus }): string {
   switch (item.chase_status) {
     case "bounced_p0":
       return "Chasing paused — email bouncing";
@@ -1197,14 +1262,174 @@ export class MockAccountsConflictError extends Error {
   }
 }
 
+/**
+ * The account-wide chase reason, which `chaseDisabledReason` checks before any
+ * per-invoice one: while an account cannot be chased at all, that fact is the
+ * answer for every invoice on it.
+ */
+function accountChaseDisabledReason(
+  status: ChaseStatus,
+  ladder: AccountContacts | undefined,
+): string | null {
+  if (status === "no_p0") return "Can't chase — no primary contact";
+  if (status === "bounced_p0") {
+    const bounced = ladder?.contacts.find(
+      (contact) =>
+        contact.tier === "P0" && !contact.do_not_contact && contact.delivery_state === "bounced",
+    );
+    return bounced
+      ? `Can't chase — ${bounced.name}'s email is bouncing`
+      : "Can't chase — the primary contact's email is bouncing";
+  }
+  if (status === "paused") return "Chasing is paused for this account";
+  return null;
+}
+
+/**
+ * Whether a stored reason came from the account rather than the invoice.
+ *
+ * Only these may be cleared when an account becomes chaseable. "Disputed" and
+ * "Promised" are facts about one invoice and survive a contact being fixed.
+ */
+function isAccountLevelChaseReason(reason: string | null): boolean {
+  return (
+    reason !== null &&
+    (reason.startsWith("Can't chase — ") || reason === "Chasing is paused for this account")
+  );
+}
+
+/**
+ * Recomputes an account's contact pips and chase status from its stored ladder.
+ *
+ * The real list derives both from the contacts on every read, so a mock that
+ * files a new P0 and leaves the row reading "Can't chase" would have the one
+ * screen that proves the contact worked still insisting it did not. Kept in
+ * terms of the same rules as `resolveChaseStatus` and `contactPip`: a tier is
+ * `present` when somebody on it is reachable, `bounced` when the only ones left
+ * bounce, `dnc` when all of them are do-not-contact.
+ */
+function syncChaseStateFromLadder(accountId: string): void {
+  const ladder = mockStore.contacts[accountId];
+  if (!ladder) return;
+  // Without the whole ladder the recomputed summary would be a downgrade
+  // dressed up as a recalculation: an account whose row says it has a P0 would
+  // lose it because the synthesized ladder never had one. Leave the fixture's
+  // summary as it stands until there is ladder data to justify changing it.
+  if (!mockStore.ladderComplete.has(accountId)) return;
+
+  const pip = (tier: ContactTier): ContactPip => {
+    const onTier = ladder.contacts.filter((contact) => contact.tier === tier);
+    if (onTier.length === 0) return "missing";
+    if (onTier.some((c) => !c.do_not_contact && c.delivery_state !== "bounced")) return "present";
+    if (onTier.some((c) => !c.do_not_contact)) return "bounced";
+    return "dnc";
+  };
+
+  const row = mockStore.list.items.find((item) => item.account_id === accountId);
+  const detail = mockStore.details[accountId];
+  // Pausing is a property of the account, not the ladder, so it survives a
+  // contact change rather than being recomputed away.
+  const paused = row?.chase_status === "paused" || detail?.chase_status === "paused";
+  const usableP0 = ladder.contacts.filter((c) => c.tier === "P0" && !c.do_not_contact);
+  const status: ChaseStatus =
+    usableP0.length === 0
+      ? "no_p0"
+      : usableP0.every((c) => c.delivery_state === "bounced")
+        ? "bounced_p0"
+        : paused
+          ? "paused"
+          : "active";
+
+  const contacts = { p0: pip("P0"), p1: pip("P1"), p2: pip("P2") };
+  if (row) {
+    row.contacts = contacts;
+    row.chase_status = status;
+    row.status_label = CHASE_STATUS_LABEL[status];
+  }
+  if (detail) {
+    detail.chase_status = status;
+    detail.status_label = CHASE_STATUS_LABEL[status];
+    detail.header_status = headerStatusFor({ chase_status: status });
+  }
+}
+
+/**
+ * Refuses a contact write on an archived account, as the RPCs do.
+ *
+ * Every contact mutation goes through `app.lock_account_for_write`, which
+ * raises `account_archived` before it looks at the If-Match token — an archived
+ * account is readable under Accounts → Archived but nothing may be written to
+ * it until it is restored. The mock had no such guard, so the fixture store
+ * would accept a contact the real backend refuses.
+ *
+ * Checked before the version token for the same reason the RPC does it in that
+ * order: being archived is the more useful answer, and a caller holding a stale
+ * token would otherwise be told to reload a page whose problem is not staleness.
+ */
+function refuseIfArchived(accountId: string): void {
+  const archived =
+    mockStore.archived.some((item) => item.account_id === accountId) ||
+    mockStore.details[accountId]?.settings.archived_at != null;
+  if (archived) {
+    throw new MockAccountsConflictError(
+      "account_archived",
+      "This account is archived. Restore it to make changes.",
+    );
+  }
+}
+
+/**
+ * Refuses a contact whose channels don't match what it can be reached on.
+ *
+ * Mirrors the `contacts_channel_reachable` check constraint: a channel on with
+ * no address or number behind it queues reminders against nothing, and the
+ * account reads as chased while nothing has gone out. The form checks this
+ * first; this is here because the form is not the only writer.
+ */
+function refuseUnreachableChannels(contact: ContactChannelFacts): void {
+  const blocked = blockedChannels(contact)[0];
+  if (blocked) {
+    throw new MockAccountsConflictError("channel_unreachable", blocked.reason);
+  }
+}
+
+/** `POST /api/v1/accounts/{id}/contacts` against the fixture store. */
 export function mockCreateContact(
   accountId: string,
   body: CreateContactBody,
   ifMatch: string,
 ): AccountContacts {
-  const contacts = mockStore.contacts[accountId];
+  refuseIfArchived(accountId);
+  refuseUnreachableChannels({
+    ...body,
+    // The column defaults the create body leaves out, so the check sees the
+    // contact that would actually be stored.
+    channel_email: body.channel_email ?? true,
+  });
+
+  // Materialize the same empty ladder the read synthesizes. Most accounts have
+  // no stored contacts fixture — including every account created during the
+  // session — and refusing those as `not_found` would mean the one account you
+  // just made is the one you cannot add a contact to, while the real RPC
+  // accepts it.
+  let contacts = mockStore.contacts[accountId];
   if (!contacts) {
-    throw new MockAccountsConflictError("not_found", "Account contacts not found.");
+    const synthesized = getMockAccountContacts(accountId);
+    if (!synthesized) {
+      throw new MockAccountsConflictError("not_found", "Account contacts not found.");
+    }
+    contacts = synthesized;
+    mockStore.contacts[accountId] = contacts;
+    // An empty ladder is accurate only where the summary already said every
+    // tier was missing. Anywhere else the fixture knows about contacts this
+    // store has no rows for, and the ladder stays non-authoritative.
+    const row = [...mockStore.list.items, ...mockStore.archived].find(
+      (item) => item.account_id === accountId,
+    );
+    const pips = row?.contacts;
+    if (!pips || (pips.p0 === "missing" && pips.p1 === "missing" && pips.p2 === "missing")) {
+      mockStore.ladderComplete.add(accountId);
+    }
   }
   if (contacts.updated_at !== ifMatch) {
     throw new MockAccountsConflictError(
@@ -1235,15 +1460,19 @@ export function mockCreateContact(
   });
   contacts.updated_at = now;
   appendActivity(accountId, "contact_added", `${body.name} added as ${body.tier} contact.`);
+  syncChaseStateFromLadder(accountId);
   return structuredClone(contacts);
 }
 
+/** `PATCH /api/v1/accounts/{id}/contacts/{contactId}` against the fixture store. */
 export function mockUpdateContact(
   accountId: string,
   contactId: string,
   body: UpdateContactBody,
   ifMatch: string,
 ): AccountContacts {
+  refuseIfArchived(accountId);
+
   const contacts = mockStore.contacts[accountId];
   if (!contacts) {
     throw new MockAccountsConflictError("not_found", "Account contacts not found.");
@@ -1280,18 +1509,36 @@ export function mockUpdateContact(
       "Add a reason before marking a contact do-not-contact.",
     );
   }
+  // The merged state, not the patch: clearing a phone number and leaving
+  // WhatsApp on breaks the rule exactly as much as turning WhatsApp on does.
+  refuseUnreachableChannels(merged);
 
-  Object.assign(contact, body, { updated_at: bumpUpdatedAt() });
+  // A new address carries no bounce history — the provider's verdict belonged
+  // to the one that bounced. Until contacts could be edited there was no way to
+  // reach this, and leaving the state behind would strand the account on
+  // "Can't chase — email bouncing" after the very fix the bounce strip asks for.
+  // `delivery_state` stays a system field: correcting the address is not a user
+  // edit of it, it is the row it described going away.
+  const emailChanged = body.email !== undefined && (body.email ?? null) !== contact.email;
+  const afterEmailChange = emailChanged
+    ? { delivery_state: "unverified" as const, last_bounced_at: null }
+    : {};
+
+  Object.assign(contact, body, afterEmailChange, { updated_at: bumpUpdatedAt() });
   contacts.updated_at = contact.updated_at;
   appendActivity(accountId, "contact_edited", `${contact.name} updated.`);
+  syncChaseStateFromLadder(accountId);
   return structuredClone(contacts);
 }
 
+/** `DELETE /api/v1/accounts/{id}/contacts/{contactId}` against the fixture store. */
 export function mockDeleteContact(
   accountId: string,
   contactId: string,
   ifMatch: string,
 ): AccountContacts {
+  refuseIfArchived(accountId);
+
   const contacts = mockStore.contacts[accountId];
   if (!contacts) {
     throw new MockAccountsConflictError("not_found", "Account contacts not found.");
@@ -1316,6 +1563,7 @@ export function mockDeleteContact(
   contacts.contacts = contacts.contacts.filter((c) => c.contact_id !== contactId);
   contacts.updated_at = bumpUpdatedAt();
   appendActivity(accountId, "contact_removed", `${name} removed.`);
+  syncChaseStateFromLadder(accountId);
   return structuredClone(contacts);
 }
 
@@ -1571,3 +1819,85 @@ export function mockResumeAccount(accountId: string, ifMatch: string): AccountDe
 
 /** Kept for callers that only need the static seed timestamp. */
 export const ACCOUNTS_AS_OF = AS_OF;
+
+/**
+ * `POST /api/v1/accounts` against the fixture store.
+ *
+ * The normalization here is deliberately cruder than
+ * `app.normalize_account_name()` — it case-folds and collapses whitespace but
+ * does not strip "Pvt Ltd". Matching the database exactly would mean keeping a
+ * second copy of the domain's duplicate rule in TypeScript, which is the thing
+ * the RPC exists to avoid. The mock's job is to exercise the created/matched
+ * branches, not to be the authority on which two names are one debtor.
+ */
+export function mockEnsureAccounts(names: readonly string[]): EnsureAccountsResult {
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+  const existing = new Map(
+    [...mockStore.list.items, ...mockStore.archived].map((item) => [normalize(item.name), item]),
+  );
+
+  // Two different dedup keys, mirroring the RPC:
+  //   answered — the exact trimmed name, because the response carries a row
+  //              per *requested* spelling. The caller maps its drafts by the
+  //              name it sent, so dropping a repeated spelling would leave one
+  //              of them unanswered.
+  //   existing — the normalized name, because that is what decides whether an
+  //              account has to be created.
+  const answered = new Set<string>();
+  const createdIds = new Set<string>();
+  const accounts: EnsureAccountsResult["accounts"] = [];
+
+  for (const raw of names) {
+    const name = raw.trim();
+    if (name === "" || answered.has(name)) continue;
+    answered.add(name);
+    const key = normalize(name);
+
+    const match = existing.get(key);
+    if (match) {
+      accounts.push({
+        requested_name: name,
+        account_id: match.account_id,
+        name: match.name,
+        // True when this same call created it a moment ago under another
+        // spelling — the RPC reports the id it inserted, not the spelling.
+        created: createdIds.has(match.account_id),
+      });
+      continue;
+    }
+
+    // A brand-new account has no invoices and no contacts, so it cannot be
+    // chased yet — `no_p0`, not `active`.
+    const item: AccountListItem = {
+      account_id: crypto.randomUUID(),
+      name,
+      outstanding: "0.00",
+      overdue: "0.00",
+      open_count: 0,
+      oldest_overdue_days: null,
+      avg_days_late: null,
+      contacts: { p0: "missing", p1: "missing", p2: "missing" },
+      chase_status: "no_p0",
+      status_label: "Can't chase",
+    };
+    mockStore.list.items.push(item);
+    // Brand new: it has no contacts, and that is the truth rather than a gap.
+    mockStore.ladderComplete.add(item.account_id);
+    mockStore.list.total_count += 1;
+    mockStore.list.filtered_count = mockStore.list.items.length;
+    // Incremented, not recounted. The fixture is an org of 47 accounts
+    // showing 12 of them, so assigning items.length here would quietly
+    // collapse the org total to the size of the visible page.
+    mockStore.list.org_totals.account_count += 1;
+    existing.set(key, item);
+    createdIds.add(item.account_id);
+    accounts.push({
+      requested_name: name,
+      account_id: item.account_id,
+      name: item.name,
+      created: true,
+    });
+  }
+
+  return { accounts };
+}
