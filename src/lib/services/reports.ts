@@ -73,6 +73,17 @@ async function requestJson(path: string, init: RequestInit): Promise<unknown> {
   if (response.ok && body === NOT_JSON) {
     throw new ReportsApiError(REPORTS_NOT_AVAILABLE, "Reports are coming soon.");
   }
+  // With no server route for this path, the framework answers an API-style
+  // request with 500 {"error": "Only HTML requests are supported here"}: a
+  // bare string, never our {code, message} envelope. That's "not built yet".
+  if (
+    !response.ok &&
+    typeof body === "object" &&
+    body !== null &&
+    typeof (body as { error?: unknown }).error === "string"
+  ) {
+    throw new ReportsApiError(REPORTS_NOT_AVAILABLE, "Reports are coming soon.");
+  }
 
   if (!response.ok) {
     const parsed = apiErrorSchema.safeParse(body);
