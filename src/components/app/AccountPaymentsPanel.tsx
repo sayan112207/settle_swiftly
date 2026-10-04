@@ -7,7 +7,7 @@ import { PaymentCard } from "@/components/app/PaymentCard";
 import { PaymentAllocationModal } from "@/components/app/PaymentAllocationModal";
 import { PaymentTriageTabs } from "@/components/app/PaymentTriageTabs";
 import { HeldInvoicesSection } from "@/components/app/HeldInvoicesSection";
-import { formatINR, isZeroMoney } from "@/lib/format";
+import { formatDays, formatINR, isZeroMoney } from "@/lib/format";
 import type { AccountPayment } from "@/lib/schemas/accounts";
 import { AccountsApiError, accountsQueryKeys, getAccountPayments } from "@/lib/services/accounts";
 
@@ -24,7 +24,7 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
     retry: false,
   });
 
-  const [selectedPaymentIndex, setSelectedPaymentIndex] = useState<number | null>(null);
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
   const [allocationPayment, setAllocationPayment] = useState<AccountPayment | null>(null);
   const [allocationModalOpen, setAllocationModalOpen] = useState(false);
 
@@ -43,23 +43,29 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
         return;
       }
 
-      switch (e.key.toLowerCase()) {
-        case "j":
-          e.preventDefault();
-          setSelectedPaymentIndex((prev) =>
-            prev === null ? 0 : Math.min(prev + 1, items.length - 1),
-          );
-          break;
+      // Track the selection by id so a refetch that reorders or drops items
+      // can't silently move it to a different payment.
+      const currentIndex = items.findIndex((p) => p.payment_id === selectedPaymentId);
 
-        case "k":
+      switch (e.key.toLowerCase()) {
+        case "j": {
           e.preventDefault();
-          setSelectedPaymentIndex((prev) =>
-            prev === null ? items.length - 1 : Math.max(prev - 1, 0),
-          );
+          const next =
+            items[currentIndex === -1 ? 0 : Math.min(currentIndex + 1, items.length - 1)];
+          if (next) setSelectedPaymentId(next.payment_id);
           break;
+        }
+
+        case "k": {
+          e.preventDefault();
+          const prev =
+            items[currentIndex === -1 ? items.length - 1 : Math.max(currentIndex - 1, 0)];
+          if (prev) setSelectedPaymentId(prev.payment_id);
+          break;
+        }
 
         case "enter": {
-          const payment = selectedPaymentIndex !== null ? items[selectedPaymentIndex] : undefined;
+          const payment = currentIndex === -1 ? undefined : items[currentIndex];
           if (payment?.action_kind === "allocate") {
             e.preventDefault();
             setAllocationPayment(payment);
@@ -80,13 +86,14 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [paymentsQuery.data?.items, selectedPaymentIndex, allocationModalOpen]);
+  }, [paymentsQuery.data?.items, selectedPaymentId, allocationModalOpen]);
 
   const isPending = paymentsQuery.isPending;
   const isError = paymentsQuery.isError;
   const data = paymentsQuery.data;
   const isEmpty = data && data.items.length === 0;
   const payments = data?.items ?? [];
+  const hasPayments = !isPending && !isError && payments.length > 0;
   const stats = data?.stats ?? {
     received_90d: "0.00",
     unapplied_total: "0.00",
@@ -103,15 +110,19 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Stats always visible */}
-      <StatRow
-        received={stats.received_90d}
-        unapplied={stats.unapplied_total}
-        averageDelay={stats.average_delay_days}
-      />
+      {/* Stats and tabs only once there are payments to triage; loading,
+          empty and error states stand on their own, as in the reference. */}
+      {hasPayments ? (
+        <>
+          <StatRow
+            received={stats.received_90d}
+            unapplied={stats.unapplied_total}
+            averageDelay={stats.average_delay_days}
+          />
 
-      {/* Triage tabs */}
-      <PaymentTriageTabs totalPayments={payments.length} />
+          <PaymentTriageTabs totalPayments={payments.length} />
+        </>
+      ) : null}
 
       {/* Held invoices section */}
       <HeldInvoicesSection invoices={[]} />
@@ -147,18 +158,18 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
             <p className="text-prose text-fg-muted mt-2">
               Payments will appear here as your bank alerts come in.
             </p>
-            <AppButton variant="secondary" className="mt-4">
+            <AppButton variant="secondary" className="mt-4" disabled title="Coming soon">
               Set up payment alerts
             </AppButton>
           </div>
         ) : (
           // Payments cards
-          payments.map((payment, idx) => (
+          payments.map((payment) => (
             <PaymentCard
               key={payment.payment_id}
               payment={payment}
-              isSelected={selectedPaymentIndex === idx}
-              onSelect={() => setSelectedPaymentIndex(idx)}
+              isSelected={selectedPaymentId === payment.payment_id}
+              onSelect={() => setSelectedPaymentId(payment.payment_id)}
               onAllocate={() => {
                 setAllocationPayment(payment);
                 setAllocationModalOpen(true);
@@ -185,6 +196,7 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
           </p>
           <Link
             to="/app/payments"
+            search={{ accountId }}
             className="shrink-0 text-body font-semibold text-accent hover:text-accent-hover"
           >
             Go to payment triage
@@ -218,7 +230,7 @@ function StatRow({
       <Stat label="unapplied credit" value={formatINR(unapplied)} tone="warn" />
       <Stat
         label="average delay"
-        value={averageDelay === null ? "—" : `${averageDelay} days`}
+        value={averageDelay === null ? "—" : formatDays(averageDelay)}
         tone={averageDelay === null ? "muted" : "danger"}
       />
     </dl>

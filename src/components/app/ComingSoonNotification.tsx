@@ -24,7 +24,10 @@ export function ComingSoonNotification({
 
   if (variant === "toast") {
     return (
-      <div className="flex items-center gap-3 rounded-card border border-warn-edge bg-warn-tint px-4 py-3">
+      <div
+        role="status"
+        className="flex items-center gap-3 rounded-card border border-warn-edge bg-warn-tint px-4 py-3"
+      >
         <XCircle className="w-5 h-5 text-warn flex-shrink-0" />
         <p className="text-prose font-semibold text-warn flex-1">{message}</p>
         {dismissible && (
@@ -41,7 +44,10 @@ export function ComingSoonNotification({
   }
 
   return (
-    <div className="flex items-center gap-2 p-3 rounded-card border border-warn-edge bg-warn-tint">
+    <div
+      role="status"
+      className="flex items-center gap-2 p-3 rounded-card border border-warn-edge bg-warn-tint"
+    >
       <XCircle className="w-5 h-5 text-warn flex-shrink-0" />
       <p className="text-prose font-semibold text-warn">{message}</p>
     </div>

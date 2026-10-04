@@ -48,6 +48,45 @@ function centsToMoney(cents: bigint): string {
   return `${sign}${rupees}.${paise.toString().padStart(2, "0")}`;
 }
 
+/** Builds the allocation rows: this payment's existing allocations first (selected), then every other open invoice. An invoice's outstanding balance already has this payment taken off, so a row seeded from an existing allocation is capped at outstanding + that allocation; otherwise the amount already applied couldn't be kept or raised. */
+export function buildAllocationRows(
+  invoices: Array<{ invoiceId: string; invoiceNumber: string; outstandingBalance: string }>,
+  initialAllocations?: Array<{ invoiceId: string; invoiceNumber: string; amount: string }>,
+): AllocationRow[] {
+  const rowMap = new Map<string, AllocationRow>();
+
+  // Initialize from existing allocations if provided
+  if (initialAllocations) {
+    for (const alloc of initialAllocations) {
+      const outstandingCents = moneyToCents(
+        invoices.find((i) => i.invoiceId === alloc.invoiceId)?.outstandingBalance ?? "0.00",
+      );
+      rowMap.set(alloc.invoiceId, {
+        invoiceId: alloc.invoiceId,
+        invoiceNumber: alloc.invoiceNumber,
+        outstandingBalance: centsToMoney(outstandingCents + moneyToCents(alloc.amount)),
+        allocated: alloc.amount,
+        selected: true,
+      });
+    }
+  }
+
+  // Add remaining invoices
+  for (const invoice of invoices) {
+    if (!rowMap.has(invoice.invoiceId)) {
+      rowMap.set(invoice.invoiceId, {
+        invoiceId: invoice.invoiceId,
+        invoiceNumber: invoice.invoiceNumber,
+        outstandingBalance: invoice.outstandingBalance,
+        allocated: "0.00",
+        selected: false,
+      });
+    }
+  }
+
+  return Array.from(rowMap.values());
+}
+
 /** Manages payment allocation state: invoice rows, selected/allocated amounts, TDS section and percentage. Provides auto-fill oldest-first and balance tracking (allocated, remaining, over-allocated). Returns all state and helpers including computed balance. */
 export function useAllocationState(
   receivedAmount: string,
@@ -65,36 +104,7 @@ export function useAllocationState(
         outstandingBalance: string;
       }>,
     ) => {
-      const rowMap = new Map<string, AllocationRow>();
-
-      // Initialize from existing allocations if provided
-      if (initialAllocations) {
-        for (const alloc of initialAllocations) {
-          rowMap.set(alloc.invoiceId, {
-            invoiceId: alloc.invoiceId,
-            invoiceNumber: alloc.invoiceNumber,
-            outstandingBalance:
-              invoices.find((i) => i.invoiceId === alloc.invoiceId)?.outstandingBalance ?? "0.00",
-            allocated: alloc.amount,
-            selected: true,
-          });
-        }
-      }
-
-      // Add remaining invoices
-      for (const invoice of invoices) {
-        if (!rowMap.has(invoice.invoiceId)) {
-          rowMap.set(invoice.invoiceId, {
-            invoiceId: invoice.invoiceId,
-            invoiceNumber: invoice.invoiceNumber,
-            outstandingBalance: invoice.outstandingBalance,
-            allocated: "0.00",
-            selected: false,
-          });
-        }
-      }
-
-      setRows(Array.from(rowMap.values()));
+      setRows(buildAllocationRows(invoices, initialAllocations));
     },
     [initialAllocations],
   );

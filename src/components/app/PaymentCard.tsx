@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppButton } from "@/components/app/AppButton";
 import { ComingSoonNotification } from "@/components/app/ComingSoonNotification";
 import type { AccountPayment } from "@/lib/schemas/accounts";
@@ -31,6 +31,24 @@ export function PaymentCard({
   onViewSplit,
 }: PaymentCardProps) {
   const [comingSoonAction, setComingSoonAction] = useState<string | null>(null);
+  const comingSoonTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (comingSoonTimer.current) clearTimeout(comingSoonTimer.current);
+    },
+    [],
+  );
+
+  const showComingSoon = (action: string) => {
+    setComingSoonAction(action);
+    if (comingSoonTimer.current) clearTimeout(comingSoonTimer.current);
+    comingSoonTimer.current = setTimeout(() => setComingSoonAction(null), 3000);
+  };
+
+  // A warn-toned TDS label gets its own callout below, so the matched-invoice
+  // line leaves it out rather than printing it twice.
+  const showTdsNote = payment.status_tone === "warn" && payment.status_label.includes("TDS");
   const hasAllocations = payment.allocations.length > 0;
 
   const firstAllocation = payment.allocations[0];
@@ -65,7 +83,8 @@ export function PaymentCard({
           </div>
           {/* Remitter and UTR on subtitle line */}
           <div className="text-prose text-fg-muted truncate" title={payment.source}>
-            {payment.source} · UTR {payment.reference}
+            {payment.source}
+            {payment.reference ? ` · UTR ${payment.reference}` : null}
           </div>
         </div>
         <div
@@ -82,7 +101,7 @@ export function PaymentCard({
             Matched to <span className="font-semibold">{firstAllocation.invoice_number}</span>
             <span className="text-fg-muted"> · </span>
             <span className="tnum font-semibold text-fg">{formatINR(firstAllocation.amount)}</span>
-            {payment.status_label && (
+            {payment.status_label && !showTdsNote && (
               <>
                 <span className="text-fg-muted"> · </span>
                 <span
@@ -103,7 +122,7 @@ export function PaymentCard({
       )}
 
       {/* Shortfall/TDS Note (if applicable) */}
-      {payment.status_tone === "warn" && payment.status_label?.includes("TDS") && (
+      {showTdsNote && (
         <div className="bg-warn-tint border border-warn-edge rounded-lg p-3 mb-3 text-prose font-semibold text-warn">
           {payment.status_label}
         </div>
@@ -123,8 +142,7 @@ export function PaymentCard({
           <AppButton
             variant="secondary"
             onClick={() => {
-              setComingSoonAction("adjust");
-              setTimeout(() => setComingSoonAction(null), 3000);
+              showComingSoon("adjust");
               onAdjust?.();
             }}
           >
@@ -137,8 +155,7 @@ export function PaymentCard({
           <AppButton
             variant="secondary"
             onClick={() => {
-              setComingSoonAction("view_split");
-              setTimeout(() => setComingSoonAction(null), 3000);
+              showComingSoon("view_split");
               onViewSplit?.();
             }}
           >
@@ -150,8 +167,7 @@ export function PaymentCard({
         <AppButton
           variant="secondary"
           onClick={() => {
-            setComingSoonAction("dismiss");
-            setTimeout(() => setComingSoonAction(null), 3000);
+            showComingSoon("dismiss");
             onDismiss?.();
           }}
         >

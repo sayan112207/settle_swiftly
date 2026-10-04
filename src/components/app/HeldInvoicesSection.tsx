@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatINR } from "@/lib/format";
 
@@ -35,9 +36,12 @@ export function HeldInvoicesSection({ invoices = [] }: HeldInvoicesSectionProps)
         <div className="space-y-2 pl-4">
           {invoices.map((inv) => (
             <div key={inv.number} className="text-prose text-fg-muted">
-              <a href="#" className="font-semibold text-accent hover:text-accent-hover">
+              <Link
+                to="/app/invoices"
+                className="font-semibold text-accent hover:text-accent-hover"
+              >
                 {inv.number}
-              </a>{" "}
+              </Link>{" "}
               · {inv.account} · <span className="tnum font-semibold text-fg">{inv.amount}</span>
             </div>
           ))}

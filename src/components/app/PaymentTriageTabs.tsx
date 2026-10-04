@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ComingSoonNotification } from "@/components/app/ComingSoonNotification";
 
 interface PaymentTriageTabsProps {
@@ -7,26 +7,32 @@ interface PaymentTriageTabsProps {
 
 type TabId = "confident" | "needs_review" | "unmatched";
 
-/** Payment categorization tabs for filtering by confidence level. Backend categorization logic is coming soon; shows placeholder counts. */
+/** Payment categorization tabs for filtering by confidence level. Backend categorization logic is coming soon, so tabs show no counts. */
 export function PaymentTriageTabs({ totalPayments }: PaymentTriageTabsProps) {
   const [selectedTab, setSelectedTab] = useState<TabId>("confident");
   const [showComingSoon, setShowComingSoon] = useState(false);
+  const comingSoonTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const tabs: Array<{
-    id: TabId;
-    label: string;
-    count: number;
-  }> = [
-    { id: "confident", label: "Confident", count: 0 },
-    { id: "needs_review", label: "Needs review", count: 0 },
-    { id: "unmatched", label: "Unmatched", count: 0 },
+  useEffect(
+    () => () => {
+      if (comingSoonTimer.current) clearTimeout(comingSoonTimer.current);
+    },
+    [],
+  );
+
+  // No per-tab counts: the backend doesn't categorise payments yet, and a
+  // hard-coded 0 would read as a real number.
+  const tabs: Array<{ id: TabId; label: string }> = [
+    { id: "confident", label: "Confident" },
+    { id: "needs_review", label: "Needs review" },
+    { id: "unmatched", label: "Unmatched" },
   ];
 
   const handleTabClick = (tabId: TabId) => {
     setSelectedTab(tabId);
     setShowComingSoon(true);
-    const timer = setTimeout(() => setShowComingSoon(false), 3000);
-    return () => clearTimeout(timer);
+    if (comingSoonTimer.current) clearTimeout(comingSoonTimer.current);
+    comingSoonTimer.current = setTimeout(() => setShowComingSoon(false), 3000);
   };
 
   return (
@@ -48,17 +54,12 @@ export function PaymentTriageTabs({ totalPayments }: PaymentTriageTabsProps) {
               }`}
             >
               {tab.label}
-              <span
-                className={`text-prose font-semibold px-2 py-0.5 rounded-full ${
-                  isSelected ? "bg-accent-tint text-accent" : "bg-subtle text-fg-muted"
-                }`}
-              >
-                {tab.count}
-              </span>
             </button>
           );
         })}
       </div>
+
+      <p className="text-prose text-fg-muted">J/K to move · Enter to allocate</p>
 
       {/* Coming soon message */}
       {showComingSoon && (

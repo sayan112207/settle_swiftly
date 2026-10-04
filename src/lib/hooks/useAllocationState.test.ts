@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { getBalance, moneyToCents, parseMoneyToCents } from "./useAllocationState";
+import {
+  buildAllocationRows,
+  getBalance,
+  moneyToCents,
+  parseMoneyToCents,
+} from "./useAllocationState";
 
 describe("useAllocationState - getBalance", () => {
   describe("exact allocation", () => {
@@ -249,5 +254,49 @@ describe("useAllocationState - money parsing", () => {
       expect(parseMoneyToCents(bad)).toBeNull();
     }
     expect(moneyToCents("12a")).toBe(0n);
+  });
+});
+
+describe("useAllocationState - buildAllocationRows", () => {
+  const invoices = [
+    { invoiceId: "inv-1", invoiceNumber: "INV-001", outstandingBalance: "400.00" },
+    { invoiceId: "inv-2", invoiceNumber: "INV-002", outstandingBalance: "250.50" },
+  ];
+
+  test("caps a row this payment already allocated to at outstanding + that allocation", () => {
+    const rows = buildAllocationRows(invoices, [
+      { invoiceId: "inv-1", invoiceNumber: "INV-001", amount: "600.25" },
+    ]);
+
+    expect(rows[0]).toEqual({
+      invoiceId: "inv-1",
+      invoiceNumber: "INV-001",
+      outstandingBalance: "1000.25",
+      allocated: "600.25",
+      selected: true,
+    });
+  });
+
+  test("leaves other invoices at their outstanding balance, unselected", () => {
+    const rows = buildAllocationRows(invoices, [
+      { invoiceId: "inv-1", invoiceNumber: "INV-001", amount: "600.00" },
+    ]);
+
+    expect(rows[1]).toEqual({
+      invoiceId: "inv-2",
+      invoiceNumber: "INV-002",
+      outstandingBalance: "250.50",
+      allocated: "0.00",
+      selected: false,
+    });
+  });
+
+  test("a fully settled invoice missing from the open list is capped at its allocation", () => {
+    const rows = buildAllocationRows(invoices, [
+      { invoiceId: "inv-9", invoiceNumber: "INV-009", amount: "75.00" },
+    ]);
+
+    expect(rows[0]?.outstandingBalance).toBe("75.00");
+    expect(rows).toHaveLength(3);
   });
 });

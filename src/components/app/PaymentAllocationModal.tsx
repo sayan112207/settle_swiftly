@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatINR } from "@/lib/format";
+import { formatINR, formatShortDate } from "@/lib/format";
 import { getAccountInvoices, accountsQueryKeys } from "@/lib/services/accounts";
 import type { AccountPayment } from "@/lib/schemas/accounts";
 import { moneyToCents, useAllocationState } from "@/lib/hooks/useAllocationState";
@@ -34,8 +34,22 @@ export function PaymentAllocationModal({
 }: PaymentAllocationModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const [isDirty, setIsDirty] = useState(false);
-  const [showApplyComingSoon, setShowApplyComingSoon] = useState(false);
+  const [comingSoonMessage, setComingSoonMessage] = useState<string | null>(null);
+  const comingSoonTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmingReverse, setConfirmingReverse] = useState(false);
+
+  useEffect(
+    () => () => {
+      if (comingSoonTimer.current) clearTimeout(comingSoonTimer.current);
+    },
+    [],
+  );
+
+  const showComingSoon = (message: string) => {
+    setComingSoonMessage(message);
+    if (comingSoonTimer.current) clearTimeout(comingSoonTimer.current);
+    comingSoonTimer.current = setTimeout(() => setComingSoonMessage(null), 4000);
+  };
 
   const invoicesQuery = useQuery({
     queryKey: accountsQueryKeys.invoices(accountId),
@@ -96,9 +110,7 @@ export function PaymentAllocationModal({
 
   const handleApply = () => {
     if (allocation.balance.isOverAllocated) return;
-    setShowApplyComingSoon(true);
-    const timer = setTimeout(() => setShowApplyComingSoon(false), 4000);
-    return () => clearTimeout(timer);
+    showComingSoon("Saving allocations is coming soon — backend support is being added.");
   };
 
   const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -127,12 +139,14 @@ export function PaymentAllocationModal({
 
   const hasAllocations = payment.allocations.length > 0;
   const remainingCents = allocation.balance.receivedCents - allocation.balance.allocatedCents;
-  // Money left over that is smaller than every invoice's balance can't settle
-  // anything, so it stays on the account as credit.
+  const isFullyAllocated = allocation.balance.allocatedCents === allocation.balance.receivedCents;
+  // Money left over that is smaller than every unpicked invoice's balance
+  // can't settle anything, so it stays on the account as credit.
+  const uncheckedRows = allocation.rows.filter((r) => !r.selected);
   const heldAsCredit =
     remainingCents > 0n &&
-    allocation.rows.length > 0 &&
-    allocation.rows.every((r) => remainingCents < moneyToCents(r.outstandingBalance));
+    uncheckedRows.length > 0 &&
+    uncheckedRows.every((r) => remainingCents < moneyToCents(r.outstandingBalance));
   const tdsOptions: TdsOption[] = ["None", "194J", "194C", "194H", "Custom"];
 
   return (
@@ -144,7 +158,8 @@ export function PaymentAllocationModal({
         <DialogHeader>
           <DialogTitle>Allocate payment</DialogTitle>
           <DialogDescription>
-            {formatINR(payment.amount)} received · {payment.source} · {payment.date}
+            {formatINR(payment.amount)} received · {payment.source} ·{" "}
+            {formatShortDate(payment.date)}
           </DialogDescription>
         </DialogHeader>
 
@@ -220,11 +235,9 @@ export function PaymentAllocationModal({
                             <button
                               key={opt}
                               type="button"
-                              onClick={() => {
-                                // TODO: Implement TDS selection per invoice
-                                setIsDirty(true);
-                              }}
-                              className="px-3 py-1 text-prose font-semibold border border-hairline rounded-full hover:bg-hovered transition-colors"
+                              disabled
+                              title="Coming soon"
+                              className="px-3 py-1 text-prose font-semibold border border-hairline rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {opt}
                             </button>
@@ -244,25 +257,24 @@ export function PaymentAllocationModal({
               className={`rounded-lg border p-3 flex items-center gap-2 ${
                 allocation.balance.isOverAllocated
                   ? "bg-error-tint border-error-edge"
-                  : allocation.balance.allocated === payment.amount
+                  : isFullyAllocated
                     ? "bg-accent-tint border-accent"
                     : "bg-warn-tint border-warn-edge"
               }`}
             >
-              {!allocation.balance.isOverAllocated &&
-                allocation.balance.allocated === payment.amount && (
-                  <svg width="16" height="16" viewBox="0 0 16 16" className="flex-shrink-0">
-                    <circle cx="8" cy="8" r="7" fill="#DCEEE5" />
-                    <path
-                      d="M5 8.2 L7 10.2 L11 6"
-                      stroke="#087A52"
-                      strokeWidth="1.6"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
+              {!allocation.balance.isOverAllocated && isFullyAllocated && (
+                <svg width="16" height="16" viewBox="0 0 16 16" className="flex-shrink-0">
+                  <circle cx="8" cy="8" r="7" fill="#DCEEE5" />
+                  <path
+                    d="M5 8.2 L7 10.2 L11 6"
+                    stroke="#087A52"
+                    strokeWidth="1.6"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
               <div className="tnum text-body font-semibold">
                 {allocation.balance.isOverAllocated
                   ? `${formatINR(
@@ -274,7 +286,7 @@ export function PaymentAllocationModal({
                         return `${rupees}.${paise.toString().padStart(2, "0")}`;
                       })(),
                     )} over-allocated`
-                  : allocation.balance.allocated === payment.amount
+                  : isFullyAllocated
                     ? "Fully allocated"
                     : `${formatINR(allocation.balance.remaining)} left`}
               </div>
@@ -304,12 +316,9 @@ export function PaymentAllocationModal({
             )}
           </div>
 
-          {showApplyComingSoon && (
+          {comingSoonMessage && (
             <div className="px-6">
-              <ComingSoonNotification
-                message="Saving allocations is coming soon — backend support is being added."
-                variant="toast"
-              />
+              <ComingSoonNotification message={comingSoonMessage} variant="toast" />
             </div>
           )}
         </div>
@@ -335,7 +344,15 @@ export function PaymentAllocationModal({
               <AppButton variant="secondary" onClick={() => setConfirmingReverse(false)}>
                 Cancel
               </AppButton>
-              <AppButton variant="secondary" onClick={() => setConfirmingReverse(false)}>
+              <AppButton
+                variant="secondary"
+                onClick={() => {
+                  setConfirmingReverse(false);
+                  showComingSoon(
+                    "Reversing allocations is coming soon — backend support is being added.",
+                  );
+                }}
+              >
                 Reverse allocation
               </AppButton>
             </div>
