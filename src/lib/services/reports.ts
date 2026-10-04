@@ -39,6 +39,12 @@ export class ReportsApiError extends Error {
   }
 }
 
+/** The code for an endpoint that isn't built yet; the page hides Retry for it. */
+export const REPORTS_NOT_AVAILABLE = "not_available";
+
+/** Stands in for a body that said it was JSON but didn't parse. */
+const NOT_JSON = Symbol("not-json");
+
 /** Resolves after `ms`; only the mock path uses it. */
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -55,7 +61,18 @@ async function requestJson(path: string, init: RequestInit): Promise<unknown> {
     signal: init.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  const body: unknown = await response.json().catch(() => undefined);
+  // Until the endpoint ships, a 404 or a 2xx that isn't JSON (the host's HTML
+  // fallback) means "not built yet" rather than "broken", so the page can say
+  // so. A 5xx still goes through the error handling below.
+  const isJson = response.headers.get("content-type")?.includes("application/json") ?? false;
+  if (response.status === 404 || (response.ok && !isJson)) {
+    throw new ReportsApiError(REPORTS_NOT_AVAILABLE, "Reports are coming soon.");
+  }
+
+  const body: unknown = await response.json().catch(() => NOT_JSON);
+  if (response.ok && body === NOT_JSON) {
+    throw new ReportsApiError(REPORTS_NOT_AVAILABLE, "Reports are coming soon.");
+  }
 
   if (!response.ok) {
     const parsed = apiErrorSchema.safeParse(body);

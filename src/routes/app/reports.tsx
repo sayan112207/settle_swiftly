@@ -19,7 +19,12 @@ import type {
   WeeklyReport,
 } from "@/lib/schemas/reports";
 import { DashboardApiError, dashboardQueryKeys, postChases } from "@/lib/services/dashboard";
-import { getWeeklyReport, ReportsApiError, reportsQueryKeys } from "@/lib/services/reports";
+import {
+  getWeeklyReport,
+  REPORTS_NOT_AVAILABLE,
+  ReportsApiError,
+  reportsQueryKeys,
+} from "@/lib/services/reports";
 import {
   agedDebtSummary,
   chaseOutcomeMessage,
@@ -65,6 +70,11 @@ function userFacingMessage(error: unknown, fallback: string): string {
   return error instanceof ReportsApiError || error instanceof DashboardApiError
     ? error.message
     : fallback;
+}
+
+/** Whether Retry can help: not for an endpoint that isn't built yet. */
+function isRetryable(error: unknown): boolean {
+  return !(error instanceof ReportsApiError && error.code === REPORTS_NOT_AVAILABLE);
 }
 
 /**
@@ -135,14 +145,16 @@ function ReportsPage() {
           <p role="alert" className="text-body font-semibold text-fg">
             {userFacingMessage(reportQuery.error, "Couldn't build this week's report.")}
           </p>
-          <AppButton
-            variant="secondary"
-            className="mt-3"
-            loading={reportQuery.isFetching}
-            onClick={() => void reportQuery.refetch()}
-          >
-            Retry
-          </AppButton>
+          {isRetryable(reportQuery.error) ? (
+            <AppButton
+              variant="secondary"
+              className="mt-3"
+              loading={reportQuery.isFetching}
+              onClick={() => void reportQuery.refetch()}
+            >
+              Retry
+            </AppButton>
+          ) : null}
         </Panel>
       ) : ready ? (
         <>
