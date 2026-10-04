@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { AppButton } from "@/components/app/AppButton";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { formatINR } from "@/lib/format";
+import { formatINR, formatShortDate } from "@/lib/format";
 import type { AccountChasingSettings } from "@/lib/schemas/accounts";
 import { updateChasingSettings } from "@/lib/services/accounts";
 import { getAccounts, getAccount } from "@/lib/services/accounts";
@@ -51,13 +51,13 @@ function CadenceOverridesPage() {
             type: settings.chase_mode === "stopped" ? "Not chased" : "Custom cadence",
             differs: getDiffers(settings),
             outstanding: account.outstanding,
-            setBy: settings.owner_name || "Unknown",
+            setBy: settings.owner_name || "—",
             setOn: detail.updated_at,
             isStale,
           });
         }
       }
-      return overrides;
+      return { overrides, accountCount: accounts.org_totals.account_count };
     },
   });
 
@@ -91,8 +91,11 @@ function CadenceOverridesPage() {
     },
   });
 
-  const overrides = accountDetailsQueries.data || [];
+  const overrides = accountDetailsQueries.data?.overrides ?? [];
+  const accountCount = accountDetailsQueries.data?.accountCount ?? 0;
   const isEmpty = overrides.length === 0;
+  const staleCount = overrides.filter((override) => override.isStale).length;
+  const resetTarget = overrides.find((override) => override.accountId === resetConfirmId);
 
   return (
     <div className="space-y-6">
@@ -104,7 +107,7 @@ function CadenceOverridesPage() {
               ? "Accounts that don't use the default cadence."
               : isEmpty
                 ? "All accounts use the default cadence."
-                : `${overrides.length} account${overrides.length === 1 ? "" : "s"} don't use the default cadence.`}
+                : `${overrides.length} of ${accountCount} accounts don't use the default cadence.`}
           </p>
         </div>
         <Link
@@ -140,7 +143,7 @@ function CadenceOverridesPage() {
               Every account uses the default cadence.
             </h2>
             <p className="text-prose text-fg-soft">
-              Overrides you set from an account's Cadence page show up here.
+              Overrides you set from an account's Settings tab show up here.
             </p>
           </div>
           <Link
@@ -151,85 +154,93 @@ function CadenceOverridesPage() {
           </Link>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-card border border-hairline bg-card">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-hairline bg-subtle">
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-fg-soft">
-                  Account
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-fg-soft">
-                  Override type
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-fg-soft">
-                  What differs
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-fg-soft">
-                  Outstanding
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-fg-soft">
-                  Set by
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-fg-soft">
-                  Set on
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-fg-soft" />
-              </tr>
-            </thead>
-            <tbody>
-              {overrides.map((override) => (
-                <tr key={override.accountId} className="border-b border-hairline hover:bg-subtle">
-                  <td className="px-4 py-3">
-                    <Link
-                      to="/app/accounts/$accountId"
-                      params={{ accountId: override.accountId }}
-                      className="text-body font-semibold text-accent hover:underline"
-                    >
-                      {override.accountName}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        override.type === "Not chased"
-                          ? "bg-danger-tint text-danger"
-                          : "bg-subtle text-fg-soft"
-                      }`}
-                    >
-                      {override.type}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-body font-semibold text-fg">{override.differs}</span>
-                      {override.isStale && (
-                        <span className="inline-block rounded-full bg-warn-tint px-2.5 py-1 text-xs font-semibold text-warn">
-                          Review
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right text-body font-semibold text-fg tnum">
-                    {formatINR(override.outstanding)}
-                  </td>
-                  <td className="px-4 py-3 text-body font-semibold text-fg">{override.setBy}</td>
-                  <td className="px-4 py-3 text-right text-prose text-fg-soft tnum">
-                    {formatDate(override.setOn)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setResetConfirmId(override.accountId)}
-                      className="text-body font-semibold text-accent hover:text-accent-strong"
-                    >
-                      Reset
-                    </button>
-                  </td>
+        <>
+          {staleCount > 0 ? (
+            <div className="rounded-card border border-warn-edge bg-warn-tint px-4 py-3 text-body font-semibold text-warn">
+              {staleCount} {staleCount === 1 ? "account has" : "accounts have"} been excluded from
+              chasing for over 90 days.
+            </div>
+          ) : null}
+          <div className="overflow-x-auto rounded-card border border-hairline bg-card">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-hairline bg-subtle">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-fg-soft">
+                    Account
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-fg-soft">
+                    Override type
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-fg-soft">
+                    What differs
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-fg-soft">
+                    Outstanding
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-fg-soft">
+                    Set by
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-fg-soft">
+                    Set on
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-fg-soft" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {overrides.map((override) => (
+                  <tr key={override.accountId} className="border-b border-hairline hover:bg-subtle">
+                    <td className="px-4 py-3">
+                      <Link
+                        to="/app/accounts/$accountId"
+                        params={{ accountId: override.accountId }}
+                        className="text-body font-semibold text-accent hover:underline"
+                      >
+                        {override.accountName}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          override.type === "Not chased"
+                            ? "bg-danger-tint text-danger"
+                            : "bg-subtle text-fg-soft"
+                        }`}
+                      >
+                        {override.type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-body font-semibold text-fg">{override.differs}</span>
+                        {override.isStale && (
+                          <span className="inline-block rounded-full bg-warn-tint px-2.5 py-1 text-xs font-semibold text-warn">
+                            Review
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right text-body font-semibold text-fg tnum">
+                      {formatINR(override.outstanding)}
+                    </td>
+                    <td className="px-4 py-3 text-body font-semibold text-fg">{override.setBy}</td>
+                    <td className="px-4 py-3 text-right text-prose text-fg-soft tnum">
+                      {formatDate(override.setOn)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setResetConfirmId(override.accountId)}
+                        className="text-body font-semibold text-accent hover:text-accent-strong"
+                      >
+                        Reset to default
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       <Dialog
@@ -238,7 +249,9 @@ function CadenceOverridesPage() {
       >
         <DialogContent className="rounded-card border-hairline bg-card p-5 sm:max-w-[440px]">
           <DialogTitle className="text-section font-bold tracking-tight text-fg">
-            Reset to default cadence?
+            {resetTarget
+              ? `Reset ${resetTarget.accountName} to the default cadence?`
+              : "Reset to default cadence?"}
           </DialogTitle>
           <DialogDescription className="mt-2 text-prose font-normal text-fg-soft">
             This account will use the organization's default cadence settings.
@@ -285,12 +298,7 @@ function getDiffers(settings: AccountChasingSettings): string {
   return diffs.length > 0 ? diffs.join(", ") : "Custom cadence";
 }
 
-/** Formats ISO date string to localized display format (en-IN), or "Unknown" on parse error. */
+/** Formats an ISO timestamp's calendar date as "6 Aug 2026", or "—" if it doesn't parse. */
 function formatDate(dateString: string): string {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" });
-  } catch {
-    return "Unknown";
-  }
+  return formatShortDate(dateString.slice(0, 10));
 }

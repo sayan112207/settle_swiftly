@@ -47,6 +47,8 @@ function ChasingLayout() {
   const location = useLocation();
   const isApprovalQueue = location.pathname === "/app/chasing";
   const isCadence = location.pathname === "/app/chasing/cadence";
+  // The overrides page carries its own title, so the section header and tabs stay out of its way.
+  const isOverrides = location.pathname === "/app/chasing/overrides";
   const queryClient = useQueryClient();
 
   const [approveAllOpen, setApproveAllOpen] = useState(false);
@@ -110,57 +112,63 @@ function ChasingLayout() {
   return (
     <ChasingContext.Provider value={{ skippedIds, setSkippedIds }}>
       <div className="space-y-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-title font-bold tracking-tight text-fg">Chasing</h1>
-            <p className="mt-1 text-prose text-fg-soft">
-              Switch to automatic sending once you trust the queue.
-            </p>
-          </div>
-          {isApprovalQueue &&
-            !queueQuery.isPending &&
-            !queueQuery.isError &&
-            validItems.length > 0 && (
-              <AppButton
-                variant="primary"
-                onClick={() => setApproveAllOpen(true)}
-                disabled={pendingIds.size > 0}
-              >
-                Approve all {validItems.length}
-              </AppButton>
-            )}
-        </div>
+        {isOverrides ? null : (
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-title font-bold tracking-tight text-fg">Chasing</h1>
+                {isApprovalQueue ? (
+                  <p className="mt-1 text-prose text-fg-soft">
+                    Switch to automatic sending once you trust the queue.
+                  </p>
+                ) : null}
+              </div>
+              {isApprovalQueue &&
+                !queueQuery.isPending &&
+                !queueQuery.isError &&
+                validItems.length > 0 && (
+                  <AppButton
+                    variant="primary"
+                    onClick={() => setApproveAllOpen(true)}
+                    disabled={pendingIds.size > 0}
+                  >
+                    Approve all {validItems.length}
+                  </AppButton>
+                )}
+            </div>
 
-        <div
-          role="tablist"
-          aria-label="Chasing sections"
-          className="mb-5 flex gap-7 border-b border-hairline"
-        >
-          <Link
-            to="/app/chasing"
-            role="tab"
-            aria-selected={isApprovalQueue}
-            className={`border-b-2 pb-3 text-body font-semibold ${
-              isApprovalQueue
-                ? "border-accent-line text-fg"
-                : "border-transparent text-fg-soft hover:text-fg"
-            }`}
-          >
-            Approval queue
-          </Link>
-          <Link
-            to="/app/chasing/cadence"
-            role="tab"
-            aria-selected={isCadence}
-            className={`border-b-2 pb-3 text-body font-semibold ${
-              isCadence
-                ? "border-accent-line text-fg"
-                : "border-transparent text-fg-soft hover:text-fg"
-            }`}
-          >
-            Cadence
-          </Link>
-        </div>
+            <div
+              role="tablist"
+              aria-label="Chasing sections"
+              className="mb-5 flex gap-7 border-b border-hairline"
+            >
+              <Link
+                to="/app/chasing"
+                role="tab"
+                aria-selected={isApprovalQueue}
+                className={`border-b-2 pb-3 text-body font-semibold ${
+                  isApprovalQueue
+                    ? "border-accent-line text-fg"
+                    : "border-transparent text-fg-soft hover:text-fg"
+                }`}
+              >
+                Approval queue
+              </Link>
+              <Link
+                to="/app/chasing/cadence"
+                role="tab"
+                aria-selected={isCadence}
+                className={`border-b-2 pb-3 text-body font-semibold ${
+                  isCadence
+                    ? "border-accent-line text-fg"
+                    : "border-transparent text-fg-soft hover:text-fg"
+                }`}
+              >
+                Cadence
+              </Link>
+            </div>
+          </>
+        )}
 
         {bulkError ? (
           <div

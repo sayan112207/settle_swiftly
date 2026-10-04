@@ -25,6 +25,9 @@ const TIME_OPTIONS = [
   "10:00",
   "11:00",
   "12:00",
+  "13:00",
+  "14:00",
+  "15:00",
   "16:00",
   "17:00",
   "18:00",
@@ -272,8 +275,9 @@ function CadencePage() {
       ) : selectedAccountId && !s ? (
         <div className="py-8 text-center text-prose text-fg-soft">Loading account...</div>
       ) : !s ? (
-        <div className="py-8 text-center text-prose text-fg-soft">
-          Select an account to view its cadence
+        <div className="rounded-card border border-hairline bg-card p-5 text-prose text-fg-soft">
+          Editing the organisation default cadence is coming soon. Pick an account to set an
+          override.
         </div>
       ) : (
         <div className="space-y-5">
@@ -335,7 +339,17 @@ function CadencePage() {
           {/* Cadence steps for default and custom modes */}
           {mode !== "stopped" ? (
             <div className="rounded-card border border-hairline bg-card p-5">
-              <h2 className="text-section font-bold tracking-tight text-fg">Cadence steps</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-section font-bold tracking-tight text-fg">Cadence steps</h2>
+                <AppButton
+                  variant="secondary"
+                  disabled
+                  title="Coming soon"
+                  aria-label="Preview (coming soon)"
+                >
+                  Preview
+                </AppButton>
+              </div>
               <ol className="mt-4 flex flex-col gap-2">
                 {steps.map((step) => {
                   const defaultStep = defaultByKey[step.key] ?? step;
@@ -424,7 +438,10 @@ function CadencePage() {
                 <div className="flex items-center gap-2">
                   <select
                     value={opensAt}
-                    onChange={(e) => setOpensAt(e.target.value)}
+                    onChange={(e) => {
+                      setOpensAt(e.target.value);
+                      setWindowMode("custom");
+                    }}
                     className="rounded-lg border border-hairline bg-card px-2 py-1 text-body font-semibold text-fg"
                   >
                     {TIME_OPTIONS.map((t) => (
@@ -436,7 +453,10 @@ function CadencePage() {
                   <span className="text-prose text-fg-soft">to</span>
                   <select
                     value={closesAt}
-                    onChange={(e) => setClosesAt(e.target.value)}
+                    onChange={(e) => {
+                      setClosesAt(e.target.value);
+                      setWindowMode("custom");
+                    }}
                     className="rounded-lg border border-hairline bg-card px-2 py-1 text-body font-semibold text-fg"
                   >
                     {TIME_OPTIONS.map((t) => (
@@ -454,9 +474,12 @@ function CadencePage() {
                     <button
                       key={day}
                       type="button"
-                      onClick={() =>
-                        setDays(days.includes(day) ? days.filter((d) => d !== day) : [...days, day])
-                      }
+                      onClick={() => {
+                        setDays(
+                          days.includes(day) ? days.filter((d) => d !== day) : [...days, day],
+                        );
+                        setWindowMode("custom");
+                      }}
                       className={`rounded-full px-3 py-1.5 text-body font-semibold transition-colors ${
                         days.includes(day)
                           ? "bg-accent text-white"
@@ -471,16 +494,37 @@ function CadencePage() {
             </div>
           </div>
 
+          {/* Automatic sending: no backend yet */}
+          <div className="rounded-card border border-hairline bg-card p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-body font-semibold text-fg">Move to automatic sending</div>
+                <p className="mt-1 text-prose text-fg-soft">
+                  Messages send without approval once your queue looks right.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={false}
+                aria-label="Move to automatic sending (coming soon)"
+                disabled
+                title="Coming soon"
+                className="relative h-[22px] w-10 shrink-0 rounded-full bg-alt disabled:opacity-60"
+              >
+                <span className="absolute left-0.5 top-0.5 size-[18px] rounded-full bg-card" />
+              </button>
+            </div>
+          </div>
+
           {/* Stop on payment indicator */}
           <div className="rounded-card border border-hairline bg-card p-5">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-body font-semibold text-fg">
-                  Stop the whole sequence when paid
+                  Stop the whole sequence the moment any invoice is paid
                 </div>
-                <p className="mt-1 text-prose text-fg-soft">
-                  Chasing stops immediately if the invoice is paid, regardless of cadence step.
-                </p>
+                <p className="mt-1 text-prose text-fg-soft">This can't be turned off.</p>
               </div>
               <span className="inline-block rounded-full bg-accent-tint px-3 py-1 text-pill font-semibold text-accent">
                 Always on
@@ -517,6 +561,9 @@ function CadencePage() {
               Save
             </AppButton>
           </div>
+          <p className="text-prose text-fg-muted">
+            Individual accounts can override this cadence from their Settings tab.
+          </p>
         </div>
       )}
 

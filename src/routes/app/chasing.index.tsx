@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, useIsMutating } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -182,6 +182,9 @@ function ApprovalQueuePage() {
               bulkMutating={bulkMutating > 0}
             />
           ))}
+          <p className="tnum mt-1 text-prose text-fg-muted">
+            Showing {items.length} of {queueQuery.data.total_eligible}
+          </p>
         </div>
       ) : null}
 
@@ -260,6 +263,12 @@ function EmptyQueue() {
         <p className="mt-1.5 text-prose text-fg-soft">
           We'll queue messages here as invoices come due.
         </p>
+        <Link
+          to="/app/chasing/cadence"
+          className="mt-3.5 inline-block text-body font-semibold text-accent hover:text-accent-hover"
+        >
+          Review your cadence
+        </Link>
       </div>
     </div>
   );
@@ -355,6 +364,9 @@ function ChaseCard({
           disabled={sending || bulkMutating}
         >
           Approve
+        </AppButton>
+        <AppButton variant="secondary" disabled title="Coming soon" aria-label="Edit (coming soon)">
+          Edit
         </AppButton>
         <button
           type="button"
