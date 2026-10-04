@@ -16,6 +16,7 @@ import {
   getTodayIST,
   getDaysUntilDue,
   isDateInRange,
+  isDueThisWeek,
 } from "@/lib/utils/invoice-date-utils";
 
 const invoicesSearchSchema = z.object({
@@ -37,9 +38,12 @@ function getDaysOverdue(dueDate: string): number {
   return Math.max(0, diffDays);
 }
 
-/** Check if an invoice is unpaid (excluding paid, written_off, and void). */
+/** Check if an invoice still has money owed: not a draft, not closed, and a balance left after payments. Status alone isn't enough, since nothing moves an invoice to "paid" when payments cover it. */
 function isUnpaidInvoice(invoice: Invoice): boolean {
-  return !["paid", "Paid", "written_off", "Written off", "void"].includes(invoice.status);
+  if (["draft", "paid", "Paid", "written_off", "Written off", "void"].includes(invoice.status)) {
+    return false;
+  }
+  return getOutstandingAmount(invoice) > 0;
 }
 
 /** Calculate outstanding amount for an invoice (gross - payments). */
@@ -344,13 +348,7 @@ function InvoicesPage() {
       .filter((inv) => getDaysOverdue(inv.due_date) > 0)
       .reduce((sum, inv) => sum + getOutstandingAmount(inv), 0);
     const dueWeek = unpaid
-      .filter((inv) => {
-        const dueDate = toISTDate(inv.due_date);
-        const today = toISTDate(getTodayIST());
-        const diffMs = dueDate.getTime() - today.getTime();
-        const daysUntilDue = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        return daysUntilDue >= 0 && daysUntilDue <= 7;
-      })
+      .filter((inv) => isDueThisWeek(inv.due_date))
       .reduce((sum, inv) => sum + getOutstandingAmount(inv), 0);
     return { outstanding, overdue, dueWeek };
   }, [filteredInvoices]);

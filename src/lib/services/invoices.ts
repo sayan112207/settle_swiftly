@@ -136,7 +136,10 @@ export const getInvoices = createServerFn({ method: "GET" })
           .from("payments")
           .select("invoice_id, amount")
           .eq("org_id", data.org_id)
-          .in("invoice_id", invoiceIds)
+          // A stable order so pages don't skip or repeat rows. No .in() on
+          // invoice IDs: org_id already scopes this, and listing every ID
+          // makes the URL too long once an org has a few hundred invoices.
+          .order("id")
           .range(offset, offset + pageSize - 1);
 
         if (paymentsError) throw new Error("Couldn't load payment data.");
