@@ -52,6 +52,7 @@ type AppShellProps = {
   children: ReactNode;
 };
 
+/** The signed-in app frame: sidebar (wordmark, primary nav, user card with sign-out) and the page area. */
 export function AppShell({ user, orgName, children }: AppShellProps) {
   // displayName is "" when the profile row is missing or hidden by RLS.
   const label = user.displayName || user.email || "";
