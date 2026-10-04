@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { z } from "zod";
 
 import { AppButton } from "@/components/app/AppButton";
@@ -20,11 +20,22 @@ import type {
 } from "@/lib/schemas/reports";
 import { DashboardApiError, dashboardQueryKeys, postChases } from "@/lib/services/dashboard";
 import { getWeeklyReport, ReportsApiError, reportsQueryKeys } from "@/lib/services/reports";
-import { agedDebtSummary, reportFileName, reportToCsv } from "@/lib/services/reports-rules";
+import {
+  agedDebtSummary,
+  chaseOutcomeMessage,
+  collectedDirection,
+  reportFileName,
+  reportToCsv,
+} from "@/lib/services/reports-rules";
+import { cn } from "@/lib/utils";
 
-/** `?aged=all` keeps the expanded aged-debt list across a reload or a shared link. */
+/**
+ * `?aged=all` keeps the expanded aged-debt list across a reload or a shared
+ * link. Anything else (a typo, a stale bookmark) falls back to the collapsed
+ * list instead of failing the route.
+ */
 const reportsSearchSchema = z.object({
-  aged: z.enum(["all"]).optional(),
+  aged: z.enum(["all"]).optional().catch(undefined),
 });
 
 export const Route = createFileRoute("/app/reports")({
@@ -43,6 +54,9 @@ const AGED_PREVIEW_LIMIT = 10;
  */
 const COMING_SOON = "Coming soon";
 
+/** Why a row chased from this page can't be chased again in the same visit. */
+const QUEUED = "Already queued";
+
 /**
  * The copy to show a person for a failed request. Only the API's own envelope
  * carries a message written for users; anything else gets the screen's copy.
@@ -58,15 +72,27 @@ function userFacingMessage(error: unknown, fallback: string): string {
  *
  * The BOM is there for Excel, which otherwise opens UTF-8 as Windows-1252 and
  * turns every en dash in "1–30" into mojibake.
+ *
+ * The anchor is attached before the click because Firefox ignores clicks on
+ * detached anchors, and the URL is revoked on the next tick because revoking
+ * synchronously can cancel a download that has not started reading the blob.
  */
 function downloadReport(report: ReadyWeeklyReport): void {
-  const blob = new Blob(["﻿", reportToCsv(report)], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = reportFileName(report);
-  anchor.click();
-  URL.revokeObjectURL(url);
+  try {
+    const blob = new Blob(["﻿", reportToCsv(report)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = reportFileName(report);
+    anchor.hidden = true;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch (error) {
+    console.error(error);
+    toast("Couldn't download the report.");
+  }
 }
 
 /**
@@ -99,9 +125,12 @@ function ReportsPage() {
         ) : null}
       </header>
 
+      {/* Data before error: a background refetch (window focus, reconnect)
+          that fails keeps the last good report on screen with a note, rather
+          than replacing a report the user is reading with an error card. */}
       {reportQuery.isPending ? (
         <ReportSkeletons />
-      ) : reportQuery.isError ? (
+      ) : report === undefined ? (
         <Panel>
           <p role="alert" className="text-body font-semibold text-fg">
             {userFacingMessage(reportQuery.error, "Couldn't build this week's report.")}
@@ -109,13 +138,33 @@ function ReportsPage() {
           <AppButton
             variant="secondary"
             className="mt-3"
+            loading={reportQuery.isFetching}
             onClick={() => void reportQuery.refetch()}
           >
             Retry
           </AppButton>
         </Panel>
       ) : ready ? (
-        <ReportBody report={ready} />
+        <>
+          {reportQuery.isError ? (
+            <div className="mb-4 flex items-center gap-3">
+              <p role="alert" className="text-body font-semibold text-fg">
+                {userFacingMessage(
+                  reportQuery.error,
+                  "Couldn't refresh this report. Showing the last copy.",
+                )}
+              </p>
+              <AppButton
+                variant="secondary"
+                loading={reportQuery.isFetching}
+                onClick={() => void reportQuery.refetch()}
+              >
+                Retry
+              </AppButton>
+            </div>
+          ) : null}
+          <ReportBody report={ready} />
+        </>
       ) : (
         <Panel>
           <div className="max-w-md">
@@ -146,7 +195,7 @@ function ReportSkeletons() {
   return (
     <>
       <span className="sr-only">Loading report</span>
-      <div className="mb-6 grid grid-cols-4 gap-4">
+      <div className={cn(TILE_GRID, "mb-6")}>
         {TILE_SKELETON_KEYS.map((key) => (
           <div key={key} className="rounded-card border border-hairline bg-card px-5 py-4">
             <AppSkeleton className="h-3 w-24" />
@@ -161,6 +210,12 @@ function ReportSkeletons() {
 }
 
 const TILE_SKELETON_KEYS = ["collected", "dso", "messages", "hours"] as const;
+
+/**
+ * Four across on desktop, then two, then one, at the project's breakpoints.
+ * Shared by the tiles and their skeletons so loading cannot shift the layout.
+ */
+const TILE_GRID = "grid grid-cols-4 gap-4 max-[900px]:grid-cols-2 max-[520px]:grid-cols-1";
 
 /** Everything below the header once a report exists. */
 function ReportBody({ report }: { report: ReadyWeeklyReport }) {
@@ -217,12 +272,10 @@ function TableOrEmpty({ children, empty }: { children: ReactNode; empty: string 
 /** The four headline numbers for the week. */
 function TileRow({ report }: { report: ReadyWeeklyReport }) {
   const { tiles } = report;
-  const thisWeek = Number(tiles.collected_this_week);
-  const lastWeek = Number(tiles.collected_last_week);
-  const direction = thisWeek > lastWeek ? "up from" : thisWeek < lastWeek ? "down from" : "same as";
+  const direction = collectedDirection(tiles.collected_this_week, tiles.collected_last_week);
 
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div className={TILE_GRID}>
       <MetricTile
         to="/app/payments"
         eyebrow="Collected this week"
@@ -327,18 +380,27 @@ function AgedDebtSection({ rows }: { rows: readonly AgedDebtItem[] }) {
   const { aged } = Route.useSearch();
   const navigate = Route.useNavigate();
   const queryClient = useQueryClient();
+  // Invoices chased from this page in this visit, with why they can't be
+  // chased again: queued, or skipped by the server (paid or disputed since the
+  // report was built). The weekly report is a snapshot and won't drop them
+  // until next week's, so without this a second click sends a second reminder.
+  const [settled, setSettled] = useState<ReadonlyMap<string, string>>(() => new Map());
 
   const chaseMutation = useMutation({
     mutationFn: (invoiceIds: readonly string[]) => postChases(invoiceIds),
     onSuccess: async (result, invoiceIds) => {
-      await queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.chaseQueue });
-      const invoice = rows.find((row) => row.invoice_id === invoiceIds[0])?.invoice_number;
+      const invoiceId = invoiceIds[0];
       const skipped = result.skipped[0];
-      if (skipped !== undefined) {
-        toast(`Skipped ${invoice ?? "that invoice"} (${skipped.reason}).`);
-        return;
+      const blockedBy =
+        skipped !== undefined ? skipped.reason : result.queued > 0 ? QUEUED : undefined;
+      if (invoiceId !== undefined && blockedBy !== undefined) {
+        setSettled((previous) => new Map(previous).set(invoiceId, blockedBy));
       }
-      toast(`${invoice ?? "Invoice"} queued`);
+      const invoice = rows.find((row) => row.invoice_id === invoiceId)?.invoice_number;
+      toast(chaseOutcomeMessage(result, invoice ?? "That invoice"));
+      // After the toast: a failed refetch of the dashboard queue must not
+      // swallow the confirmation of a chase that did go out.
+      await queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.chaseQueue });
     },
     onError: (error) => {
       toast(userFacingMessage(error, "Couldn't queue that chase."));
@@ -378,27 +440,31 @@ function AgedDebtSection({ rows }: { rows: readonly AgedDebtItem[] }) {
     {
       id: "action",
       header: "Action",
-      cell: (row) => (
-        <div className="-ml-2 flex items-center gap-0.5">
-          <AppButton
-            variant="text"
-            loading={pendingId === row.invoice_id}
-            disabled={row.chase_disabled_reason !== null || chaseMutation.isPending}
-            title={row.chase_disabled_reason ?? undefined}
-            aria-label={
-              row.chase_disabled_reason
-                ? `Chase ${row.invoice_number} (disabled: ${row.chase_disabled_reason})`
-                : `Chase ${row.invoice_number}`
-            }
-            onClick={() => chaseMutation.mutate([row.invoice_id])}
-          >
-            <span className="text-prose">Chase</span>
-          </AppButton>
-          <ComingSoonAction label="Payment plan" invoice={row.invoice_number} />
-          <ComingSoonAction label="Escalate" invoice={row.invoice_number} />
-          <ComingSoonAction label="Write off" invoice={row.invoice_number} tone="danger" />
-        </div>
-      ),
+      cell: (row) => {
+        const settledAs = settled.get(row.invoice_id);
+        const blockedBy = row.chase_disabled_reason ?? settledAs ?? null;
+        return (
+          <div className="-ml-2 flex items-center gap-0.5">
+            <AppButton
+              variant="text"
+              loading={pendingId === row.invoice_id}
+              disabled={blockedBy !== null || chaseMutation.isPending}
+              title={blockedBy ?? undefined}
+              aria-label={
+                blockedBy
+                  ? `Chase ${row.invoice_number} (disabled: ${blockedBy})`
+                  : `Chase ${row.invoice_number}`
+              }
+              onClick={() => chaseMutation.mutate([row.invoice_id])}
+            >
+              <span className="text-prose">{settledAs === QUEUED ? "Queued" : "Chase"}</span>
+            </AppButton>
+            <ComingSoonAction label="Payment plan" invoice={row.invoice_number} />
+            <ComingSoonAction label="Escalate" invoice={row.invoice_number} />
+            <ComingSoonAction label="Write off" invoice={row.invoice_number} tone="danger" />
+          </div>
+        );
+      },
     },
   ];
 

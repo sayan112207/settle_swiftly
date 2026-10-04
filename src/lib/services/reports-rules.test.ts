@@ -3,7 +3,10 @@ import { describe, expect, test } from "bun:test";
 import type { AgedDebtItem, ReadyWeeklyReport } from "@/lib/schemas/reports";
 import {
   agedDebtSummary,
+  chaseOutcomeMessage,
+  collectedDirection,
   csvField,
+  dsoChartWindow,
   dsoBarHeights,
   dsoTrend,
   formatMonthLong,
@@ -95,6 +98,51 @@ describe("dsoBarHeights", () => {
         { month: "2026-08", days: 30 },
       ]),
     ).toEqual([24, 24]);
+  });
+});
+
+describe("collectedDirection", () => {
+  test("compares in paise", () => {
+    expect(collectedDirection("100.01", "100.00")).toBe("up from");
+    expect(collectedDirection("99.99", "100.00")).toBe("down from");
+    expect(collectedDirection("100.00", "100")).toBe("same as");
+    expect(collectedDirection("0.00", "0.00")).toBe("same as");
+  });
+});
+
+describe("chaseOutcomeMessage", () => {
+  test("reports a queued chase", () => {
+    expect(chaseOutcomeMessage({ queued: 1, skipped: [] }, "INV-1")).toBe("INV-1 queued");
+  });
+
+  test("reports the server's skip reason verbatim", () => {
+    const result = {
+      queued: 0,
+      skipped: [{ invoice_id: "d0c00099-0000-4000-8000-000000000001", reason: "Paid" }],
+    };
+    expect(chaseOutcomeMessage(result, "INV-1")).toBe("Skipped INV-1 (Paid).");
+  });
+
+  test("does not claim success when nothing was queued", () => {
+    expect(chaseOutcomeMessage({ queued: 0, skipped: [] }, "INV-1")).toBe(
+      "INV-1 wasn't queued. Try again in a moment.",
+    );
+  });
+});
+
+describe("dsoChartWindow", () => {
+  test("keeps at most the last twelve months", () => {
+    const series = Array.from({ length: 18 }, (_, i) => ({
+      month: `2025-${String((i % 12) + 1).padStart(2, "0")}`,
+      days: i,
+    }));
+    const window = dsoChartWindow(series);
+    expect(window).toHaveLength(12);
+    expect(window[0]?.days).toBe(6);
+  });
+
+  test("an empty series draws no bars", () => {
+    expect(dsoBarHeights([])).toEqual([]);
   });
 });
 

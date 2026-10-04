@@ -1,3 +1,4 @@
+import type { ChaseResponse } from "@/lib/schemas/dashboard";
 import type { AgedDebtItem, DsoPoint, ReadyWeeklyReport } from "@/lib/schemas/reports";
 
 /**
@@ -85,6 +86,47 @@ export function agedDebtSummary(rows: readonly AgedDebtItem[]): {
   return { total: fromPaise(total), accountCount: accounts.size };
 }
 
+/**
+ * How this week's collections compare with last week's, as the words that
+ * lead into the tile's sub-line ("up from ₹3,10,000.00 last week").
+ *
+ * Compared in paise, not through `Number`, so two amounts that differ only in
+ * paise never read as "same as".
+ */
+export function collectedDirection(thisWeek: string, lastWeek: string): string {
+  const now = toPaise(thisWeek);
+  const before = toPaise(lastWeek);
+  if (now > before) return "up from";
+  if (now < before) return "down from";
+  return "same as";
+}
+
+/**
+ * The toast after a single-row Chase.
+ *
+ * The server re-checks every invoice, so a row that was chaseable on load can
+ * come back skipped (paid or disputed in the meantime). A reply that neither
+ * queued nor skipped anything is reported as such rather than as success.
+ */
+export function chaseOutcomeMessage(result: ChaseResponse, invoiceNumber: string): string {
+  const skipped = result.skipped[0];
+  if (skipped !== undefined) return `Skipped ${invoiceNumber} (${skipped.reason}).`;
+  if (result.queued === 0) return `${invoiceNumber} wasn't queued. Try again in a moment.`;
+  return `${invoiceNumber} queued`;
+}
+
+/**
+ * The months the DSO chart draws: the most recent year at most. A longer
+ * history would squeeze the bars and their labels into each other; the full
+ * series still goes into the CSV.
+ */
+export const DSO_CHART_MAX_MONTHS = 12;
+
+/** The tail of the series the chart shows. */
+export function dsoChartWindow(series: readonly DsoPoint[]): readonly DsoPoint[] {
+  return series.slice(-DSO_CHART_MAX_MONTHS);
+}
+
 export type DsoTrend = {
   /** Sentence under the current DSO, e.g. "↓ 9 days since March". */
   label: string;
@@ -130,6 +172,8 @@ const DSO_BAR_RANGE_PX = 60;
  */
 export function dsoBarHeights(series: readonly DsoPoint[]): number[] {
   const values = series.map((point) => point.days);
+  // Math.min() of nothing is Infinity, which would paint NaN-pixel bars.
+  if (values.length === 0) return [];
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
