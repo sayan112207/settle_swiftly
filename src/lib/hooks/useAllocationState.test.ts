@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getBalance } from "./useAllocationState";
+import { getBalance, moneyToCents, parseMoneyToCents } from "./useAllocationState";
 
 describe("useAllocationState - getBalance", () => {
   describe("exact allocation", () => {
@@ -228,5 +228,26 @@ describe("useAllocationState - getBalance", () => {
       expect(balance.remaining).toBe("0.00");
       expect(balance.isOverAllocated).toBe(false);
     });
+  });
+});
+
+describe("useAllocationState - money parsing", () => {
+  test("applies the sign to the whole amount", () => {
+    expect(parseMoneyToCents("-5.50")).toBe(-550n);
+    expect(parseMoneyToCents("-0.05")).toBe(-5n);
+  });
+
+  test("pads paise and accepts partial input while typing", () => {
+    expect(parseMoneyToCents("100")).toBe(10000n);
+    expect(parseMoneyToCents("12.5")).toBe(1250n);
+    expect(parseMoneyToCents("12.")).toBe(1200n);
+    expect(parseMoneyToCents("")).toBe(0n);
+  });
+
+  test("rejects input that isn't a money amount instead of throwing", () => {
+    for (const bad of ["12a", "1e3", "1,000", "1.2.3", "1.234"]) {
+      expect(parseMoneyToCents(bad)).toBeNull();
+    }
+    expect(moneyToCents("12a")).toBe(0n);
   });
 });

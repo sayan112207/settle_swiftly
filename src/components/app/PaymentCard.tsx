@@ -36,7 +36,9 @@ export function PaymentCard({
   const firstAllocation = payment.allocations[0];
 
   // Determine confidence level from status (backend provides status_label)
-  const confidenceBadge = CONFIDENCE_BADGES.likely; // Could expand with status-based logic
+  // The API doesn't score matches yet, so the only signal is whether the
+  // payment has been allocated to anything.
+  const confidenceBadge = hasAllocations ? CONFIDENCE_BADGES.likely : CONFIDENCE_BADGES.unmatched;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && isSelected) {

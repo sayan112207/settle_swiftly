@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppButton } from "@/components/app/AppButton";
@@ -14,7 +14,7 @@ import {
 import { formatINR } from "@/lib/format";
 import { getAccountInvoices, accountsQueryKeys } from "@/lib/services/accounts";
 import type { AccountPayment } from "@/lib/schemas/accounts";
-import { useAllocationState } from "@/lib/hooks/useAllocationState";
+import { moneyToCents, useAllocationState } from "@/lib/hooks/useAllocationState";
 
 interface PaymentAllocationModalProps {
   open: boolean;
@@ -43,16 +43,19 @@ export function PaymentAllocationModal({
     enabled: open && !!payment,
   });
 
-  const allocation = useAllocationState(
-    payment?.amount ?? "0.00",
-    payment?.allocations
-      ? payment.allocations.map((a) => ({
-          invoiceId: a.invoice_id,
-          invoiceNumber: a.invoice_number,
-          amount: a.amount,
-        }))
-      : undefined,
+  // Memoised so setInvoices keeps its identity between renders; a new array
+  // here would re-run the effect below and reset the user's edits.
+  const initialAllocations = useMemo(
+    () =>
+      payment?.allocations.map((a) => ({
+        invoiceId: a.invoice_id,
+        invoiceNumber: a.invoice_number,
+        amount: a.amount,
+      })),
+    [payment],
   );
+  const allocation = useAllocationState(payment?.amount ?? "0.00", initialAllocations);
+  const { setInvoices } = allocation;
 
   useEffect(() => {
     if (!open || !invoicesQuery.data) return;
@@ -65,8 +68,8 @@ export function PaymentAllocationModal({
       })),
     );
 
-    allocation.setInvoices(invoices);
-  }, [invoicesQuery.data, open, allocation]);
+    setInvoices(invoices);
+  }, [invoicesQuery.data, open, setInvoices]);
 
   const handleAutoFill = () => {
     if (!invoicesQuery.data) return;
@@ -99,12 +102,6 @@ export function PaymentAllocationModal({
   };
 
   const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      handleClose();
-      return;
-    }
-
     if (e.key === "Tab" && dialogRef.current) {
       const focusables = Array.from(
         dialogRef.current.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])'),
@@ -129,10 +126,17 @@ export function PaymentAllocationModal({
   if (!payment) return null;
 
   const hasAllocations = payment.allocations.length > 0;
+  const remainingCents = allocation.balance.receivedCents - allocation.balance.allocatedCents;
+  // Money left over that is smaller than every invoice's balance can't settle
+  // anything, so it stays on the account as credit.
+  const heldAsCredit =
+    remainingCents > 0n &&
+    allocation.rows.length > 0 &&
+    allocation.rows.every((r) => remainingCents < moneyToCents(r.outstandingBalance));
   const tdsOptions: TdsOption[] = ["None", "194J", "194C", "194H", "Custom"];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : handleClose())}>
       <DialogContent
         className="max-h-[90vh] max-w-2xl overflow-hidden flex flex-col"
         onKeyDown={handleDialogKeyDown}
@@ -276,15 +280,12 @@ export function PaymentAllocationModal({
               </div>
             </div>
 
-            {parseFloat(allocation.balance.remaining) > 0 &&
-              !allocation.balance.isOverAllocated &&
-              parseFloat(allocation.balance.remaining) <
-                Math.min(...allocation.rows.map((r) => parseFloat(r.outstandingBalance))) && (
-                <div className="text-prose text-warn">
-                  {formatINR(allocation.balance.remaining)} will be held as unapplied credit on this
-                  account.
-                </div>
-              )}
+            {heldAsCredit && (
+              <div className="text-prose text-warn">
+                {formatINR(allocation.balance.remaining)} will be held as unapplied credit on this
+                account.
+              </div>
+            )}
 
             {allocation.balance.isOverAllocated && (
               <div className="text-prose text-danger">

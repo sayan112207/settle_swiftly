@@ -6,7 +6,6 @@ import { AppButton } from "@/components/app/AppButton";
 import { PaymentCard } from "@/components/app/PaymentCard";
 import { PaymentAllocationModal } from "@/components/app/PaymentAllocationModal";
 import { PaymentTriageTabs } from "@/components/app/PaymentTriageTabs";
-import { PaymentReviewBanner } from "@/components/app/PaymentReviewBanner";
 import { HeldInvoicesSection } from "@/components/app/HeldInvoicesSection";
 import { formatINR, isZeroMoney } from "@/lib/format";
 import type { AccountPayment } from "@/lib/schemas/accounts";
@@ -34,12 +33,15 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
     const items = paymentsQuery.data?.items ?? [];
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't navigate if typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      // The shortcuts belong to the card list: leave keys alone while the
+      // modal is open or when focus is on a control that handles them itself.
+      if (allocationModalOpen || items.length === 0) return;
+      if (
+        e.target instanceof HTMLElement &&
+        e.target.closest("input, textarea, select, button, a, [role='dialog'], [contenteditable]")
+      ) {
         return;
       }
-
-      if (items.length === 0) return;
 
       switch (e.key.toLowerCase()) {
         case "j":
@@ -56,16 +58,15 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
           );
           break;
 
-        case "enter":
-          e.preventDefault();
-          if (selectedPaymentIndex !== null) {
-            const payment = items[selectedPaymentIndex];
-            if (payment?.action_kind === "allocate") {
-              setAllocationPayment(payment);
-              setAllocationModalOpen(true);
-            }
+        case "enter": {
+          const payment = selectedPaymentIndex !== null ? items[selectedPaymentIndex] : undefined;
+          if (payment?.action_kind === "allocate") {
+            e.preventDefault();
+            setAllocationPayment(payment);
+            setAllocationModalOpen(true);
           }
           break;
+        }
 
         case "x":
           e.preventDefault();
@@ -79,7 +80,7 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [paymentsQuery.data?.items, selectedPaymentIndex]);
+  }, [paymentsQuery.data?.items, selectedPaymentIndex, allocationModalOpen]);
 
   const isPending = paymentsQuery.isPending;
   const isError = paymentsQuery.isError;
@@ -111,9 +112,6 @@ export function AccountPaymentsPanel({ accountId, accountName }: AccountPayments
 
       {/* Triage tabs */}
       <PaymentTriageTabs totalPayments={payments.length} />
-
-      {/* Stale/unreviewed warning - show if there are payments */}
-      <PaymentReviewBanner unreviewed={Math.max(0, payments.length - 1)} heldInvoiceCount={0} />
 
       {/* Held invoices section */}
       <HeldInvoicesSection invoices={[]} />

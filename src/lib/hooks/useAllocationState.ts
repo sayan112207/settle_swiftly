@@ -23,10 +23,20 @@ export interface AllocationBalance {
   receivedCents: bigint;
 }
 
-/** Converts rupees.paise string format to cents as bigint. Handles decimals by padding paise to 2 digits, e.g., "100" → 10000n cents. */
-function moneyToCents(value: string): bigint {
-  const [rupees, paise = "0"] = value.split(".");
-  return BigInt(rupees ?? "0") * 100n + BigInt(paise.padEnd(2, "0").slice(0, 2));
+const MONEY_INPUT = /^(-?)(\d*)(?:\.(\d{0,2}))?$/;
+
+/** Parses a rupees.paise string into cents, or null when it isn't a money amount. Accepts partial input like "12." so a field can be typed into, and applies the sign to the whole amount, e.g., "-5.50" → -550n. */
+export function parseMoneyToCents(value: string): bigint | null {
+  const match = MONEY_INPUT.exec(value.trim());
+  if (!match) return null;
+  const [, sign, rupees, paise = ""] = match;
+  const cents = BigInt(rupees || "0") * 100n + BigInt(paise.padEnd(2, "0"));
+  return sign ? -cents : cents;
+}
+
+/** Converts rupees.paise string format to cents as bigint, treating anything unparseable as zero, e.g., "100" → 10000n cents. */
+export function moneyToCents(value: string): bigint {
+  return parseMoneyToCents(value) ?? 0n;
 }
 
 /** Converts cents (bigint) back to rupees.paise format, preserving sign and padding paise to 2 digits, e.g., 10000n → "100.00". */
@@ -105,14 +115,15 @@ export function useAllocationState(
 
   const setAllocationAmount = useCallback(
     (invoiceId: string, amount: string) => {
-      const amountCents = moneyToCents(amount);
+      const amountCents = parseMoneyToCents(amount);
       const maxCents = moneyToCents(
         rows.find((r) => r.invoiceId === invoiceId)?.outstandingBalance ?? "0.00",
       );
 
-      // Allow negative to detect over-allocation, but don't enforce max here
-      // The UI will show over-allocation state
-      if (amountCents < 0n) return;
+      // Drop the keystroke rather than store something that isn't money, a
+      // negative, or more than the invoice owes. Over-allocating the payment
+      // as a whole is still allowed; the UI shows that state.
+      if (amountCents === null || amountCents < 0n || amountCents > maxCents) return;
 
       setRows((prev) =>
         prev.map((row) =>
