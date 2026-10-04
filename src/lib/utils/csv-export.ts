@@ -2,10 +2,12 @@
  * CSV export utilities for invoice data.
  */
 
+import { toast } from "sonner";
+
 export interface ExportableInvoice {
   id: string;
   invoice_number: string;
-  account_id: string;
+  account_name: string;
   amount: number;
   issue_date: string;
   due_date: string;
@@ -28,20 +30,20 @@ function escapeCSVField(value: string | number): string {
 
 /**
  * Convert invoices to CSV format and trigger download.
- * Format: Account ID, Invoice Number, Amount, Issue Date, Due Date, Status
+ * Format: Account, Invoice Number, Amount, Issue Date, Due Date, Status
  */
 export function exportInvoicesAsCSV(invoices: ExportableInvoice[], filename = "invoices.csv") {
   if (invoices.length === 0) {
-    alert("No invoices to export.");
+    toast("No invoices to export.");
     return;
   }
 
   // CSV headers
-  const headers = ["Account ID", "Invoice Number", "Amount", "Issue Date", "Due Date", "Status"];
+  const headers = ["Account", "Invoice Number", "Amount", "Issue Date", "Due Date", "Status"];
 
   // Convert invoices to CSV rows
   const rows = invoices.map((inv) => [
-    escapeCSVField(inv.account_id),
+    escapeCSVField(inv.account_name),
     escapeCSVField(inv.invoice_number),
     escapeCSVField(inv.amount),
     escapeCSVField(inv.issue_date),

@@ -1,14 +1,16 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { ChevronDown, Search, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { AppButton } from "@/components/app/AppButton";
 import { AppSkeleton } from "@/components/app/AppSkeleton";
 import { PRODUCT_NAME } from "@/lib/brand";
-import { formatINR, formatShortDate } from "@/lib/format";
+import { formatINR, formatOverdueDays, formatShortDate } from "@/lib/format";
 import { accountsQueryKeys, getAccounts } from "@/lib/services/accounts";
+import { DashboardApiError, dashboardQueryKeys, postChases } from "@/lib/services/dashboard";
 import { getInvoices, invoicesQueryKeys, type InvoiceRow } from "@/lib/services/invoices";
 import { exportInvoicesAsCSV } from "@/lib/utils/csv-export";
 import {
@@ -40,7 +42,7 @@ function getDaysOverdue(dueDate: string): number {
 
 /** Check if an invoice still has money owed: not a draft, not closed, and a balance left after payments. Status alone isn't enough, since nothing moves an invoice to "paid" when payments cover it. */
 function isUnpaidInvoice(invoice: Invoice): boolean {
-  if (["draft", "paid", "Paid", "written_off", "Written off", "void"].includes(invoice.status)) {
+  if (["draft", "paid", "written_off", "void"].includes(invoice.status)) {
     return false;
   }
   return getOutstandingAmount(invoice) > 0;
@@ -48,7 +50,8 @@ function isUnpaidInvoice(invoice: Invoice): boolean {
 
 /** Calculate outstanding amount for an invoice (gross - payments). */
 function getOutstandingAmount(invoice: Invoice): number {
-  return Math.max(0, invoice.amount - invoice.amount_paid);
+  // Rounded to paise so float subtraction can't leave a settled invoice owing a sliver.
+  return Math.max(0, Math.round((invoice.amount - invoice.amount_paid) * 100) / 100);
 }
 
 /** Categorize days overdue into aging buckets for display. */
@@ -60,14 +63,32 @@ function getAgingBucket(daysOverdue: number): string {
   return "90+ days";
 }
 
-/** Get Tailwind classes for status badge based on invoice status. */
-function getStatusColor(status: string) {
-  const s = status.toLowerCase();
-  if (s === "paid" || s === "partially_paid") {
-    return { bg: "bg-green-100", text: "text-green-700" };
+/** The status a person reads: disputes and promises outrank the stored enum, and an open invoice reads as overdue or not yet due. */
+function getDisplayStatus(invoice: Invoice): string {
+  const isUnpaid = isUnpaidInvoice(invoice);
+  if (invoice.disputed_at && isUnpaid) return "Disputed";
+  if (invoice.promised_date && isUnpaid) return "Promised";
+  if (invoice.status === "paid") return "Paid";
+  if (invoice.status === "written_off") return "Written off";
+  if (invoice.status === "void") return "Void";
+  if (invoice.status === "draft") return "Draft";
+  // Payments can cover an invoice without anything moving its status to "paid".
+  if (!isUnpaid) return "Paid";
+  if (invoice.status === "partially_paid") return "Partially paid";
+  return getDaysOverdue(invoice.due_date) > 0 ? "Overdue" : "Not yet due";
+}
+
+/** Get Tailwind classes for status badge based on the display status. */
+function getStatusColor(displayStatus: string) {
+  if (
+    displayStatus === "Overdue" ||
+    displayStatus === "Disputed" ||
+    displayStatus === "Written off"
+  ) {
+    return { bg: "bg-danger-tint", text: "text-danger" };
   }
-  if (s === "open") return { bg: "bg-gray-100", text: "text-gray-700" };
-  if (s === "draft") return { bg: "bg-blue-100", text: "text-blue-700" };
+  if (displayStatus === "Promised") return { bg: "bg-warn-tint", text: "text-warn" };
+  if (displayStatus === "Paid") return { bg: "bg-accent-tint", text: "text-accent" };
   return { bg: "bg-gray-100", text: "text-gray-700" };
 }
 
@@ -82,12 +103,34 @@ interface ActiveFilters {
   dueDate?: string;
 }
 
+// Views that aren't `available` need data the backend doesn't send yet.
 const SAVED_VIEWS = [
-  { label: "Reconciliation", pinned: true },
-  { label: "Exceptions", pinned: true },
-  { label: "My overdue invoices", pinned: false },
-  { label: "Outstanding > ₹1L", pinned: false },
+  { label: "Reconciliation", pinned: true, available: false },
+  { label: "Exceptions", pinned: true, available: false },
+  { label: "My overdue invoices", pinned: false, available: false },
+  { label: "Outstanding > ₹1L", pinned: false, available: true },
+  { label: "TDS issues", pinned: false, available: false },
+  { label: "GST mismatches", pinned: false, available: false },
+  { label: "Promises due this week", pinned: false, available: true },
 ];
+
+const DEEP_LINK_STATUS_LABELS = {
+  overdue: "Overdue",
+  disputed: "Disputed",
+  "promise-broken": "Promise broken",
+} as const;
+
+const COLUMN_OPTIONS = [
+  { key: "invoice", label: "Invoice #", align: "left" },
+  { key: "account", label: "Account", align: "left" },
+  { key: "invoiceDate", label: "Inv date", align: "left" },
+  { key: "dueDate", label: "Due date", align: "left" },
+  { key: "amount", label: "Invoice amt", align: "right" },
+  { key: "paid", label: "Paid", align: "right" },
+  { key: "outstanding", label: "Outstanding", align: "right" },
+  { key: "ageing", label: "Ageing", align: "right" },
+  { key: "status", label: "Status", align: "left" },
+] as const;
 
 const SORT_OPTIONS = [
   "Oldest overdue first",
@@ -111,6 +154,8 @@ const AMOUNT_BUCKETS = [
 function InvoicesPage() {
   const { orgs } = Route.useRouteContext();
   const { status: statusFilter } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const queryClient = useQueryClient();
   const orgId = orgs[0]!.id;
 
   // Query state
@@ -147,7 +192,7 @@ function InvoicesPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
-    new Set(["account", "invoice", "amount", "invoiceDate", "dueDate", "status"]),
+    new Set(COLUMN_OPTIONS.map((col) => col.key)),
   );
 
   const filterMenuRef = useRef<HTMLDivElement>(null);
@@ -165,6 +210,7 @@ function InvoicesPage() {
       if (e.key === "Escape") {
         setColumnsOpen(false);
         setOpenQuickFilter(null);
+        setSelectedInvoice(null);
       }
     };
 
@@ -179,7 +225,7 @@ function InvoicesPage() {
   // Get unique filter values
   const uniqueStatuses = useMemo(() => {
     if (!invoicesQuery.data) return [];
-    const statuses = new Set(invoicesQuery.data.map((inv) => inv.status));
+    const statuses = new Set(invoicesQuery.data.map(getDisplayStatus));
     return Array.from(statuses).sort();
   }, [invoicesQuery.data]);
 
@@ -227,6 +273,11 @@ function InvoicesPage() {
     // Apply saved view filter
     if (savedView === "Outstanding > ₹1L") {
       result = result.filter((inv) => getOutstandingAmount(inv) > 100000);
+    } else if (savedView === "Promises due this week") {
+      result = result.filter(
+        (inv) =>
+          isUnpaidInvoice(inv) && inv.promised_date !== null && isDueThisWeek(inv.promised_date),
+      );
     }
 
     // Search filter
@@ -243,7 +294,7 @@ function InvoicesPage() {
 
     // Apply active filters with AND logic
     if (activeFilters["status"]) {
-      result = result.filter((inv) => inv.status === activeFilters["status"]);
+      result = result.filter((inv) => getDisplayStatus(inv) === activeFilters["status"]);
     }
     if (activeFilters["ageing"]) {
       result = result.filter((inv) => {
@@ -275,8 +326,9 @@ function InvoicesPage() {
     // Sort
     const sortedResult = result.slice().sort((a, b) => {
       if (sortBy === "Oldest overdue first") {
-        const daysA = getDaysOverdue(a.due_date);
-        const daysB = getDaysOverdue(b.due_date);
+        // Settled invoices count as 0 days so they sort after everything still owed.
+        const daysA = isUnpaidInvoice(a) ? getDaysOverdue(a.due_date) : 0;
+        const daysB = isUnpaidInvoice(b) ? getDaysOverdue(b.due_date) : 0;
         return daysB - daysA;
       }
       if (sortBy === "Highest outstanding first") {
@@ -341,7 +393,9 @@ function InvoicesPage() {
 
   // Metrics
   const metrics = useMemo(() => {
-    if (filteredInvoices.length === 0) return { outstanding: 0, overdue: 0, dueWeek: 0 };
+    if (filteredInvoices.length === 0) {
+      return { outstanding: 0, overdue: 0, dueWeek: 0, promised: 0 };
+    }
     const unpaid = filteredInvoices.filter(isUnpaidInvoice);
     const outstanding = unpaid.reduce((sum, inv) => sum + getOutstandingAmount(inv), 0);
     const overdue = unpaid
@@ -350,7 +404,10 @@ function InvoicesPage() {
     const dueWeek = unpaid
       .filter((inv) => isDueThisWeek(inv.due_date))
       .reduce((sum, inv) => sum + getOutstandingAmount(inv), 0);
-    return { outstanding, overdue, dueWeek };
+    const promised = unpaid
+      .filter((inv) => inv.promised_date !== null)
+      .reduce((sum, inv) => sum + getOutstandingAmount(inv), 0);
+    return { outstanding, overdue, dueWeek, promised };
   }, [filteredInvoices]);
 
   const isLoading = invoicesQuery.isPending;
@@ -399,6 +456,56 @@ function InvoicesPage() {
       };
     });
 
+  /** Drop the dashboard deep-link filter (?status=) without touching the rest of the page. */
+  const clearStatusSearch = () => {
+    void navigate({ search: {} });
+    setCurrentPage(1);
+  };
+
+  /** Reset every filter source: chips, search, saved view and the ?status= deep link. */
+  const clearAllFilters = () => {
+    setActiveFilters({});
+    setSearchInput("");
+    setSavedView(null);
+    clearStatusSearch();
+  };
+
+  const toExportRows = (invoices: Invoice[]) =>
+    invoices.map((inv) => ({
+      id: inv.id,
+      invoice_number: inv.invoice_number,
+      account_name: accountNames.get(inv.account_id) ?? inv.account_id,
+      amount: inv.amount,
+      issue_date: inv.issue_date,
+      due_date: inv.due_date,
+      status: getDisplayStatus(inv),
+    }));
+
+  const chaseMutation = useMutation({
+    mutationFn: (invoiceIds: readonly string[]) => postChases(invoiceIds),
+    onSuccess: async (result) => {
+      setSelectedRows(new Set());
+      await queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.chaseQueue });
+      if (result.skipped.length === 0) {
+        const word = result.queued === 1 ? "invoice" : "invoices";
+        toast(`${result.queued} ${word} queued`);
+        return;
+      }
+      const skipped = result.skipped
+        .map((entry) => {
+          const invoice = invoicesQuery.data?.find((inv) => inv.id === entry.invoice_id);
+          return `${invoice?.invoice_number ?? entry.invoice_id} (${entry.reason})`;
+        })
+        .join(", ");
+      toast(`${result.queued} queued. Skipped ${skipped}.`);
+    },
+    onError: (error, invoiceIds) => {
+      const fallback =
+        invoiceIds.length === 1 ? "Couldn't queue that chase." : "Couldn't queue those chases.";
+      toast(error instanceof DashboardApiError ? error.message : fallback);
+    },
+  });
+
   const handleQuickFilterSelect = (filterName: string, value: string) => {
     const newFilters = { ...activeFilters };
     const filterKey =
@@ -428,24 +535,15 @@ function InvoicesPage() {
           <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
           <p className="mt-1 text-sm text-gray-600">
             {viewMode === "collections"
-              ? `${filteredInvoices.length} invoice${filteredInvoices.length !== 1 ? "s" : ""} to chase · ${formatINR(String(metrics.overdue))}`
-              : `${filteredInvoices.length} invoice${filteredInvoices.length !== 1 ? "s" : ""} · ${formatINR(String(metrics.outstanding))}`}
+              ? `${filteredInvoices.length} invoice${filteredInvoices.length !== 1 ? "s" : ""} to chase · ${formatINR(String(metrics.overdue))} overdue`
+              : `${filteredInvoices.length} invoice${filteredInvoices.length !== 1 ? "s" : ""} · ${formatINR(String(metrics.outstanding))} outstanding`}
           </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => {
-              const toExport = filteredInvoices.map((inv) => ({
-                id: inv.id,
-                invoice_number: inv.invoice_number,
-                account_id: inv.account_id,
-                amount: inv.amount,
-                issue_date: inv.issue_date,
-                due_date: inv.due_date,
-                status: inv.status,
-              }));
               exportInvoicesAsCSV(
-                toExport,
+                toExportRows(filteredInvoices),
                 `invoices-${new Date().toISOString().split("T")[0]}.csv`,
               );
             }}
@@ -474,7 +572,10 @@ function InvoicesPage() {
       {/* Error state */}
       {isError && (
         <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-          <p className="text-sm font-semibold text-gray-900">Couldn't load invoices</p>
+          <p className="text-sm font-semibold text-gray-900">We couldn't load your invoices</p>
+          <p className="mt-1 text-sm text-gray-600">
+            Your filters are still applied — nothing has changed.
+          </p>
           <AppButton
             variant="secondary"
             onClick={async () => {
@@ -482,7 +583,7 @@ function InvoicesPage() {
             }}
             className="mt-4"
           >
-            Retry
+            Try again
           </AppButton>
         </div>
       )}
@@ -490,7 +591,16 @@ function InvoicesPage() {
       {/* Empty state */}
       {!isLoading && !isError && isEmpty && (
         <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
-          <p className="text-sm text-gray-600">No invoices yet. Add entries to begin.</p>
+          <h2 className="text-lg font-bold text-gray-900">No invoices yet</h2>
+          <p className="mt-1 text-sm text-gray-600">
+            Type a few in, or import an export from Tally or Zoho.
+          </p>
+          <Link
+            to="/app/add-entries"
+            className="mt-4 inline-flex items-center rounded-full bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800"
+          >
+            Add entries
+          </Link>
         </div>
       )}
 
@@ -516,6 +626,16 @@ function InvoicesPage() {
                 {formatINR(String(metrics.dueWeek))}
               </div>
               <div className="text-sm text-gray-600 mt-1">Due this week</div>
+            </div>
+            <div className="text-left">
+              <div className="text-lg font-bold text-amber-700">
+                {formatINR(String(metrics.promised))}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Promised</div>
+            </div>
+            <div className="text-left" title="Coming soon" aria-label="Blocked (coming soon)">
+              <div className="text-lg font-bold text-gray-400">—</div>
+              <div className="text-sm text-gray-400 mt-1">Blocked</div>
             </div>
           </div>
 
@@ -677,6 +797,16 @@ function InvoicesPage() {
                 ),
               )}
 
+              <button
+                type="button"
+                disabled
+                title="Coming soon"
+                aria-label="More filters (coming soon)"
+                className="flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm font-semibold h-10 whitespace-nowrap text-gray-400 cursor-not-allowed"
+              >
+                More filters
+              </button>
+
               {/* Sort & Columns - grouped on right */}
               <div className="flex items-center gap-2 ml-auto">
                 <select
@@ -711,14 +841,7 @@ function InvoicesPage() {
                         Visible columns
                       </div>
                       <div className="space-y-2">
-                        {[
-                          { key: "account", label: "Account" },
-                          { key: "invoice", label: "Invoice" },
-                          { key: "amount", label: "Amount" },
-                          { key: "invoiceDate", label: "Invoice date" },
-                          { key: "dueDate", label: "Due date" },
-                          { key: "status", label: "Status" },
-                        ].map((col) => (
+                        {COLUMN_OPTIONS.map((col) => (
                           <label
                             key={col.key}
                             className="flex items-center gap-2 text-sm cursor-pointer"
@@ -748,8 +871,20 @@ function InvoicesPage() {
             </div>
 
             {/* Active Filter Chips */}
-            {filterChips.length > 0 && (
+            {(filterChips.length > 0 || statusFilter) && (
               <div className="flex flex-wrap items-center gap-2 mb-3">
+                {statusFilter && (
+                  <div className="flex items-center gap-2 rounded-full bg-gray-100 border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-900">
+                    {DEEP_LINK_STATUS_LABELS[statusFilter]}
+                    <button
+                      onClick={clearStatusSearch}
+                      aria-label={`Remove ${DEEP_LINK_STATUS_LABELS[statusFilter]} filter`}
+                      className="text-gray-600 hover:text-gray-900"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
                 {filterChips.map((chip) => (
                   <div
                     key={chip.key}
@@ -772,7 +907,7 @@ function InvoicesPage() {
                 <button
                   onClick={() => {
                     setActiveFilters({});
-                    setCurrentPage(1);
+                    clearStatusSearch();
                   }}
                   className="text-xs font-semibold text-gray-600 hover:text-gray-900"
                 >
@@ -793,18 +928,26 @@ function InvoicesPage() {
                   setCurrentPage(1);
                 }}
                 className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  view.label === "Outstanding > ₹1L"
+                  view.available
                     ? savedView === view.label
                       ? "border border-green-200 bg-green-50 text-green-700"
                       : "border border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
                     : "border border-gray-300 bg-white text-gray-400 cursor-not-allowed"
                 }`}
-                disabled={view.label !== "Outstanding > ₹1L"}
+                disabled={!view.available}
+                title={view.available ? undefined : "Coming soon"}
+                aria-label={view.available ? undefined : `${view.label} (coming soon)`}
               >
-                {view.label === "Outstanding > ₹1L" ? view.label : `${view.label} — Coming soon`}
+                {view.label}
               </button>
             ))}
-            <button className="text-xs font-semibold text-green-700 hover:text-green-800 bg-none border-none cursor-pointer">
+            <button
+              type="button"
+              disabled
+              title="Coming soon"
+              aria-label="Save this view (coming soon)"
+              className="text-xs font-semibold text-gray-400 bg-none border-none cursor-not-allowed"
+            >
               Save this view
             </button>
           </div>
@@ -818,39 +961,38 @@ function InvoicesPage() {
                 </div>
               </div>
               <div className="flex gap-2">
+                {viewMode === "collections" && (
+                  <button
+                    onClick={() => chaseMutation.mutate(Array.from(selectedRows))}
+                    disabled={chaseMutation.isPending}
+                    aria-busy={chaseMutation.isPending}
+                    className="px-3 py-1 rounded-full bg-green-700 text-white text-sm font-semibold hover:bg-green-800 disabled:opacity-50"
+                  >
+                    Chase
+                  </button>
+                )}
                 <button
-                  onClick={() => {
-                    alert("Record payment feature coming soon. Backend integration needed.");
-                  }}
-                  className="px-3 py-1 rounded-full bg-green-700 text-white text-sm font-semibold hover:bg-green-800 disabled:opacity-50"
+                  type="button"
+                  disabled
+                  title="Coming soon"
+                  aria-label="Record payment (coming soon)"
+                  className="px-3 py-1 rounded-full bg-white border border-gray-300 text-gray-400 text-sm font-semibold cursor-not-allowed"
                 >
                   Record payment
                 </button>
                 <button
-                  onClick={() => {
-                    alert("Bulk assign feature coming soon. Backend integration needed.");
-                  }}
-                  className="px-3 py-1 rounded-full bg-white border border-gray-300 text-gray-900 text-sm font-semibold hover:bg-gray-100"
+                  type="button"
+                  disabled
                   title="Coming soon"
+                  aria-label="Assign (coming soon)"
+                  className="px-3 py-1 rounded-full bg-white border border-gray-300 text-gray-400 text-sm font-semibold cursor-not-allowed"
                 >
                   Assign
                 </button>
                 <button
                   onClick={() => {
-                    const selectedInvoices = filteredInvoices.filter((inv) =>
-                      selectedRows.has(inv.id),
-                    );
-                    const toExport = selectedInvoices.map((inv) => ({
-                      id: inv.id,
-                      invoice_number: inv.invoice_number,
-                      account_id: inv.account_id,
-                      amount: inv.amount,
-                      issue_date: inv.issue_date,
-                      due_date: inv.due_date,
-                      status: inv.status,
-                    }));
                     exportInvoicesAsCSV(
-                      toExport,
+                      toExportRows(filteredInvoices.filter((inv) => selectedRows.has(inv.id))),
                       `invoices-selected-${new Date().toISOString().split("T")[0]}.csv`,
                     );
                   }}
@@ -872,11 +1014,7 @@ function InvoicesPage() {
               </p>
               {viewMode !== "collections" && (
                 <button
-                  onClick={() => {
-                    setActiveFilters({});
-                    setSearchInput("");
-                    setCurrentPage(1);
-                  }}
+                  onClick={clearAllFilters}
                   className="mt-4 rounded-full bg-green-700 text-white px-4 py-2 text-sm font-semibold hover:bg-green-800"
                 >
                   Clear filters
@@ -898,42 +1036,24 @@ function InvoicesPage() {
                           className="w-4 h-4"
                         />
                       </th>
-                      {visibleColumns.has("account") && (
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
-                          Account
+                      {COLUMN_OPTIONS.filter((col) => visibleColumns.has(col.key)).map((col) => (
+                        <th
+                          key={col.key}
+                          className={`px-4 py-3 text-xs font-semibold uppercase text-gray-600 ${
+                            col.align === "right" ? "text-right" : "text-left"
+                          }`}
+                        >
+                          {col.label}
                         </th>
-                      )}
-                      {visibleColumns.has("invoice") && (
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
-                          Invoice
-                        </th>
-                      )}
-                      {visibleColumns.has("amount") && (
-                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-600">
-                          Amount
-                        </th>
-                      )}
-                      {visibleColumns.has("invoiceDate") && (
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
-                          Invoice date
-                        </th>
-                      )}
-                      {visibleColumns.has("dueDate") && (
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
-                          Due date
-                        </th>
-                      )}
-                      {visibleColumns.has("status") && (
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">
-                          Status
-                        </th>
-                      )}
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedInvoices.map((invoice) => {
-                      const colors = getStatusColor(invoice.status);
+                      const displayStatus = getDisplayStatus(invoice);
+                      const colors = getStatusColor(displayStatus);
                       const isSelected = selectedRows.has(invoice.id);
+                      const isUnpaid = isUnpaidInvoice(invoice);
                       return (
                         <tr
                           key={invoice.id}
@@ -956,19 +1076,14 @@ function InvoicesPage() {
                               className="w-4 h-4"
                             />
                           </td>
-                          {visibleColumns.has("account") && (
-                            <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                              {accountNames.get(invoice.account_id) ?? invoice.account_id}
-                            </td>
-                          )}
                           {visibleColumns.has("invoice") && (
                             <td className="px-4 py-3 text-sm text-green-700 font-semibold">
                               {invoice.invoice_number}
                             </td>
                           )}
-                          {visibleColumns.has("amount") && (
-                            <td className="px-4 py-3 text-right text-sm text-gray-900">
-                              {formatINR(String(invoice.amount))}
+                          {visibleColumns.has("account") && (
+                            <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                              {accountNames.get(invoice.account_id) ?? invoice.account_id}
                             </td>
                           )}
                           {visibleColumns.has("invoiceDate") && (
@@ -981,6 +1096,26 @@ function InvoicesPage() {
                               {formatShortDate(invoice.due_date)}
                             </td>
                           )}
+                          {visibleColumns.has("amount") && (
+                            <td className="px-4 py-3 text-right text-sm text-gray-900">
+                              {formatINR(String(invoice.amount))}
+                            </td>
+                          )}
+                          {visibleColumns.has("paid") && (
+                            <td className="px-4 py-3 text-right text-sm text-gray-600">
+                              {formatINR(String(invoice.amount_paid))}
+                            </td>
+                          )}
+                          {visibleColumns.has("outstanding") && (
+                            <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">
+                              {formatINR(String(getOutstandingAmount(invoice)))}
+                            </td>
+                          )}
+                          {visibleColumns.has("ageing") && (
+                            <td className="px-4 py-3 text-right text-sm text-gray-600">
+                              {isUnpaid ? getAgingBucket(getDaysOverdue(invoice.due_date)) : "—"}
+                            </td>
+                          )}
                           {visibleColumns.has("status") && (
                             <td className="px-4 py-3">
                               <span
@@ -988,7 +1123,7 @@ function InvoicesPage() {
                                   colors.bg
                                 } ${colors.text}`}
                               >
-                                {invoice.status}
+                                {displayStatus}
                               </span>
                             </td>
                           )}
@@ -1099,9 +1234,18 @@ function InvoicesPage() {
                 </button>
               </div>
               <div className="mt-6 text-3xl font-bold text-gray-900">
-                {formatINR(String(selectedInvoice.amount))}
+                {formatINR(String(getOutstandingAmount(selectedInvoice)))}
               </div>
-              <p className="text-sm text-gray-600 mt-1">Invoice amount</p>
+              <p className="text-sm text-gray-600 mt-1">
+                outstanding of {formatINR(String(selectedInvoice.amount))}
+              </p>
+              <Link
+                to="/app/accounts/$accountId"
+                params={{ accountId: selectedInvoice.account_id }}
+                className="mt-3 inline-block text-sm font-semibold text-green-700 hover:text-green-800"
+              >
+                View account
+              </Link>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -1110,7 +1254,25 @@ function InvoicesPage() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Status</span>
-                    <span className="font-semibold text-gray-900">{selectedInvoice.status}</span>
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                        getStatusColor(getDisplayStatus(selectedInvoice)).bg
+                      } ${getStatusColor(getDisplayStatus(selectedInvoice)).text}`}
+                    >
+                      {getDisplayStatus(selectedInvoice)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Paid</span>
+                    <span className="font-semibold text-gray-900">
+                      {formatINR(String(selectedInvoice.amount_paid))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Outstanding</span>
+                    <span className="font-semibold text-gray-900">
+                      {formatINR(String(getOutstandingAmount(selectedInvoice)))}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Invoice date</span>
@@ -1127,7 +1289,9 @@ function InvoicesPage() {
                   <div className="flex justify-between">
                     <span className="text-gray-600">Days overdue</span>
                     <span className="font-semibold text-gray-900">
-                      {getDaysOverdue(selectedInvoice.due_date)} days
+                      {isUnpaidInvoice(selectedInvoice)
+                        ? formatOverdueDays(getDaysOverdue(selectedInvoice.due_date))
+                        : "—"}
                     </span>
                   </div>
                 </div>
@@ -1135,10 +1299,22 @@ function InvoicesPage() {
             </div>
 
             <div className="border-t border-gray-200 p-4 flex gap-2">
-              <button className="flex-1 rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-100">
+              <button
+                type="button"
+                disabled
+                title="Coming soon"
+                aria-label="Record payment (coming soon)"
+                className="flex-1 rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed"
+              >
                 Record payment
               </button>
-              <button className="flex-1 rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-100">
+              <button
+                type="button"
+                disabled
+                title="Coming soon"
+                aria-label="Set follow-up (coming soon)"
+                className="flex-1 rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed"
+              >
                 Set follow-up
               </button>
             </div>

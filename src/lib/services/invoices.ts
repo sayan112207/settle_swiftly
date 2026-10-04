@@ -160,7 +160,9 @@ export const getInvoices = createServerFn({ method: "GET" })
     const paymentsByInvoice = new Map<string, number>();
     allPayments.forEach((payment) => {
       const current = paymentsByInvoice.get(payment.invoice_id) ?? 0;
-      paymentsByInvoice.set(payment.invoice_id, current + payment.amount);
+      // Rounded to paise each step so float drift can't leave a settled
+      // invoice owing ₹0.0000001 and keep it in the unpaid set.
+      paymentsByInvoice.set(payment.invoice_id, Math.round((current + payment.amount) * 100) / 100);
     });
 
     // Add calculated amount_paid to each invoice
