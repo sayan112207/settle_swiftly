@@ -164,12 +164,13 @@ export function SendingPanel() {
               <li
                 key={day}
                 aria-label={`${day}: ${on ? "on" : "off"}`}
-                className={cn(
-                  "rounded-pill border px-3 py-1.5 text-pill font-semibold",
+                // Plain string, not cn(): tailwind-merge would drop the size
+                // class next to the colour class.
+                className={`rounded-pill border px-3.5 py-2 text-prose font-semibold ${
                   on
                     ? "border-accent-edge bg-accent-tint text-accent"
-                    : "border-stroke bg-card text-fg-soft",
-                )}
+                    : "border-stroke bg-card text-fg-soft"
+                }`}
               >
                 {day}
               </li>
