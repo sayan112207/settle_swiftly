@@ -81,10 +81,10 @@ export function PaymentCard({
           <div className="tnum text-metric font-bold text-fg mb-0.5">
             {formatINR(payment.amount)} received · {formatShortDate(payment.date)}
           </div>
-          {/* Remitter and UTR on subtitle line */}
+          {/* Source and reference (already labelled, e.g. "UTR …", "Cheque …") */}
           <div className="text-prose text-fg-muted truncate" title={payment.source}>
             {payment.source}
-            {payment.reference ? ` · UTR ${payment.reference}` : null}
+            {payment.reference ? ` · ${payment.reference}` : null}
           </div>
         </div>
         <div
