@@ -173,7 +173,9 @@ function ReportBody({ report }: { report: ReadyWeeklyReport }) {
         <DsoChart series={report.dso_series} />
       </section>
 
-      <div className="mt-6 grid grid-cols-2 gap-5">
+      {/* Side by side only where both tables fit without squeezing the notes
+          into a sliver; below that they stack at full width. */}
+      <div className="mt-6 grid gap-6 2xl:grid-cols-2 2xl:gap-5">
         <section className="min-w-0">
           <SectionHeading>At risk next week</SectionHeading>
           <TableOrEmpty empty="Nothing tips into a worse bucket next week.">
@@ -281,6 +283,7 @@ const AT_RISK_COLUMNS: readonly Column<AtRiskItem>[] = [
   {
     id: "bucket",
     header: "Bucket",
+    wrap: true,
     cell: (row) => (
       <span className="text-prose font-normal text-fg-soft">
         {row.bucket} · {row.note}
@@ -303,6 +306,7 @@ const CALL_LIST_COLUMNS: readonly Column<CallListItem>[] = [
   {
     id: "reason",
     header: "Reason",
+    wrap: true,
     cell: (row) => <span className="text-prose font-normal text-fg-soft">{row.reason}</span>,
   },
 ];
