@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -138,7 +138,7 @@ function CadencePage() {
       closesAt !== initialRef.current.closesAt ||
       JSON.stringify(days) !== JSON.stringify(initialRef.current.days));
 
-  const isOverride = s && s.chase_mode !== "default";
+  const isOverride = s && (s.chase_mode !== "default" || s.send_window_mode !== "default");
 
   async function handleSave() {
     if (!selectedAccountId || !s || !detail) return;
@@ -176,8 +176,8 @@ function CadencePage() {
           days,
         };
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Couldn't save cadence");
+    } catch {
+      // useUpdateChasingSettings already shows the error toast.
     }
   }
 
@@ -202,8 +202,8 @@ function CadencePage() {
       toast.success("Reset to default cadence");
       setResetConfirmOpen(false);
       setMode("default");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Couldn't reset cadence");
+    } catch {
+      // useUpdateChasingSettings already shows the error toast.
     }
   }
 
@@ -245,12 +245,12 @@ function CadencePage() {
             </>
           )}
         </div>
-        <a
-          href="/app/chasing/overrides"
+        <Link
+          to="/app/chasing/overrides"
           className="rounded-lg border border-hairline bg-card px-4 py-2 text-body font-semibold text-fg hover:bg-hovered"
         >
           Manage overrides
-        </a>
+        </Link>
       </div>
 
       {selectedAccountId && accountQuery.isError ? (

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
+import { Link, createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -136,8 +136,8 @@ function ChasingLayout() {
           aria-label="Chasing sections"
           className="mb-5 flex gap-7 border-b border-hairline"
         >
-          <a
-            href="/app/chasing"
+          <Link
+            to="/app/chasing"
             role="tab"
             aria-selected={isApprovalQueue}
             className={`border-b-2 pb-3 text-body font-semibold ${
@@ -147,9 +147,9 @@ function ChasingLayout() {
             }`}
           >
             Approval queue
-          </a>
-          <a
-            href="/app/chasing/cadence"
+          </Link>
+          <Link
+            to="/app/chasing/cadence"
             role="tab"
             aria-selected={isCadence}
             className={`border-b-2 pb-3 text-body font-semibold ${
@@ -159,7 +159,7 @@ function ChasingLayout() {
             }`}
           >
             Cadence
-          </a>
+          </Link>
         </div>
 
         {bulkError ? (

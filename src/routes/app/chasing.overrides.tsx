@@ -1,10 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { AppButton } from "@/components/app/AppButton";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { formatINR } from "@/lib/format";
 import type { AccountChasingSettings } from "@/lib/schemas/accounts";
 import { updateChasingSettings } from "@/lib/services/accounts";
 import { getAccounts, getAccount } from "@/lib/services/accounts";
@@ -99,17 +100,19 @@ function CadenceOverridesPage() {
         <div>
           <h1 className="text-title font-bold tracking-tight text-fg">Cadence overrides</h1>
           <p className="mt-1 text-prose text-fg-soft">
-            {isEmpty
-              ? "All accounts use the default cadence."
-              : `${overrides.length} account${overrides.length === 1 ? "" : "s"} don't use the default cadence.`}
+            {accountDetailsQueries.isPending || accountDetailsQueries.isError
+              ? "Accounts that don't use the default cadence."
+              : isEmpty
+                ? "All accounts use the default cadence."
+                : `${overrides.length} account${overrides.length === 1 ? "" : "s"} don't use the default cadence.`}
           </p>
         </div>
-        <a
-          href="/app/chasing/cadence"
+        <Link
+          to="/app/chasing/cadence"
           className="inline-block rounded-lg border border-hairline bg-card px-4 py-2 text-body font-semibold text-fg hover:bg-hovered"
         >
           Back to cadence
-        </a>
+        </Link>
       </div>
 
       {accountDetailsQueries.isPending ? (
@@ -140,12 +143,12 @@ function CadenceOverridesPage() {
               Overrides you set from an account's Cadence page show up here.
             </p>
           </div>
-          <a
-            href="/app/chasing/cadence"
+          <Link
+            to="/app/chasing/cadence"
             className="mt-2 inline-block rounded-lg border border-hairline bg-card px-4 py-2 text-body font-semibold text-fg hover:bg-hovered"
           >
             Back to cadence
-          </a>
+          </Link>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-card border border-hairline bg-card">
@@ -177,12 +180,13 @@ function CadenceOverridesPage() {
               {overrides.map((override) => (
                 <tr key={override.accountId} className="border-b border-hairline hover:bg-subtle">
                   <td className="px-4 py-3">
-                    <a
-                      href={`/app/accounts/${override.accountId}`}
+                    <Link
+                      to="/app/accounts/$accountId"
+                      params={{ accountId: override.accountId }}
                       className="text-body font-semibold text-accent hover:underline"
                     >
                       {override.accountName}
-                    </a>
+                    </Link>
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -206,7 +210,7 @@ function CadenceOverridesPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right text-body font-semibold text-fg tnum">
-                    {override.outstanding}
+                    {formatINR(override.outstanding)}
                   </td>
                   <td className="px-4 py-3 text-body font-semibold text-fg">{override.setBy}</td>
                   <td className="px-4 py-3 text-right text-prose text-fg-soft tnum">
