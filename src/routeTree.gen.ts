@@ -28,6 +28,9 @@ import { Route as ApiV1ChasesRouteImport } from './routes/api/v1/chases'
 import { Route as AppAccountsIndexRouteImport } from './routes/app/accounts.index'
 import { Route as AppAccountsAccountIdRouteImport } from './routes/app/accounts.$accountId'
 import { Route as AppAccountsNewRouteImport } from './routes/app/accounts.new'
+import { Route as AppChasingIndexRouteImport } from './routes/app/chasing.index'
+import { Route as AppChasingCadenceRouteImport } from './routes/app/chasing.cadence'
+import { Route as AppChasingOverridesRouteImport } from './routes/app/chasing.overrides'
 import { Route as ApiV1AccountsIndexRouteImport } from './routes/api/v1/accounts/index'
 import { Route as ApiV1DashboardChaseQueueRouteImport } from './routes/api/v1/dashboard/chase-queue'
 import { Route as ApiV1DashboardSummaryRouteImport } from './routes/api/v1/dashboard/summary'
@@ -139,6 +142,21 @@ const AppAccountsNewRoute = AppAccountsNewRouteImport.update({
   path: '/new',
   getParentRoute: () => AppAccountsRoute,
 } as any)
+const AppChasingIndexRoute = AppChasingIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppChasingRoute,
+} as any)
+const AppChasingCadenceRoute = AppChasingCadenceRouteImport.update({
+  id: '/cadence',
+  path: '/cadence',
+  getParentRoute: () => AppChasingRoute,
+} as any)
+const AppChasingOverridesRoute = AppChasingOverridesRouteImport.update({
+  id: '/overrides',
+  path: '/overrides',
+  getParentRoute: () => AppChasingRoute,
+} as any)
 const ApiV1AccountsIndexRoute = ApiV1AccountsIndexRouteImport.update({
   id: '/api/v1/accounts/',
   path: '/api/v1/accounts/',
@@ -236,7 +254,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/app/accounts': typeof AppAccountsRouteWithChildren
   '/app/add-entries': typeof AppAddEntriesRoute
-  '/app/chasing': typeof AppChasingRoute
+  '/app/chasing': typeof AppChasingRouteWithChildren
   '/app/dashboard': typeof AppDashboardRoute
   '/app/invoices': typeof AppInvoicesRoute
   '/app/payments': typeof AppPaymentsRoute
@@ -247,7 +265,10 @@ export interface FileRoutesByFullPath {
   '/api/v1/chases': typeof ApiV1ChasesRoute
   '/app/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/app/accounts/new': typeof AppAccountsNewRoute
+  '/app/chasing/cadence': typeof AppChasingCadenceRoute
+  '/app/chasing/overrides': typeof AppChasingOverridesRoute
   '/app/accounts/': typeof AppAccountsIndexRoute
+  '/app/chasing/': typeof AppChasingIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
   '/api/v1/accounts/': typeof ApiV1AccountsIndexRoute
@@ -270,7 +291,6 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/app/add-entries': typeof AppAddEntriesRoute
-  '/app/chasing': typeof AppChasingRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/invoices': typeof AppInvoicesRoute
   '/app/payments': typeof AppPaymentsRoute
@@ -281,7 +301,10 @@ export interface FileRoutesByTo {
   '/api/v1/chases': typeof ApiV1ChasesRoute
   '/app/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/app/accounts/new': typeof AppAccountsNewRoute
+  '/app/chasing/cadence': typeof AppChasingCadenceRoute
+  '/app/chasing/overrides': typeof AppChasingOverridesRoute
   '/app/accounts': typeof AppAccountsIndexRoute
+  '/app/chasing': typeof AppChasingIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
   '/api/v1/accounts': typeof ApiV1AccountsIndexRoute
@@ -307,7 +330,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/app/accounts': typeof AppAccountsRouteWithChildren
   '/app/add-entries': typeof AppAddEntriesRoute
-  '/app/chasing': typeof AppChasingRoute
+  '/app/chasing': typeof AppChasingRouteWithChildren
   '/app/dashboard': typeof AppDashboardRoute
   '/app/invoices': typeof AppInvoicesRoute
   '/app/payments': typeof AppPaymentsRoute
@@ -318,7 +341,10 @@ export interface FileRoutesById {
   '/api/v1/chases': typeof ApiV1ChasesRoute
   '/app/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/app/accounts/new': typeof AppAccountsNewRoute
+  '/app/chasing/cadence': typeof AppChasingCadenceRoute
+  '/app/chasing/overrides': typeof AppChasingOverridesRoute
   '/app/accounts/': typeof AppAccountsIndexRoute
+  '/app/chasing/': typeof AppChasingIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
   '/api/v1/accounts/': typeof ApiV1AccountsIndexRoute
@@ -356,7 +382,10 @@ export interface FileRouteTypes {
     | '/api/v1/chases'
     | '/app/accounts/$accountId'
     | '/app/accounts/new'
+    | '/app/chasing/cadence'
+    | '/app/chasing/overrides'
     | '/app/accounts/'
+    | '/app/chasing/'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
     | '/api/v1/accounts/'
@@ -379,7 +408,6 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/app/add-entries'
-    | '/app/chasing'
     | '/app/dashboard'
     | '/app/invoices'
     | '/app/payments'
@@ -390,7 +418,10 @@ export interface FileRouteTypes {
     | '/api/v1/chases'
     | '/app/accounts/$accountId'
     | '/app/accounts/new'
+    | '/app/chasing/cadence'
+    | '/app/chasing/overrides'
     | '/app/accounts'
+    | '/app/chasing'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
     | '/api/v1/accounts'
@@ -426,7 +457,10 @@ export interface FileRouteTypes {
     | '/api/v1/chases'
     | '/app/accounts/$accountId'
     | '/app/accounts/new'
+    | '/app/chasing/cadence'
+    | '/app/chasing/overrides'
     | '/app/accounts/'
+    | '/app/chasing/'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
     | '/api/v1/accounts/'
@@ -604,6 +638,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountsNewRouteImport
       parentRoute: typeof AppAccountsRoute
     }
+    '/app/chasing/': {
+      id: '/app/chasing/'
+      path: '/'
+      fullPath: '/app/chasing/'
+      preLoaderRoute: typeof AppChasingIndexRouteImport
+      parentRoute: typeof AppChasingRoute
+    }
+    '/app/chasing/cadence': {
+      id: '/app/chasing/cadence'
+      path: '/cadence'
+      fullPath: '/app/chasing/cadence'
+      preLoaderRoute: typeof AppChasingCadenceRouteImport
+      parentRoute: typeof AppChasingRoute
+    }
+    '/app/chasing/overrides': {
+      id: '/app/chasing/overrides'
+      path: '/overrides'
+      fullPath: '/app/chasing/overrides'
+      preLoaderRoute: typeof AppChasingOverridesRouteImport
+      parentRoute: typeof AppChasingRoute
+    }
     '/api/v1/accounts/': {
       id: '/api/v1/accounts/'
       path: '/api/v1/accounts'
@@ -728,10 +783,26 @@ const AppAccountsRouteWithChildren = AppAccountsRoute._addFileChildren(
   AppAccountsRouteChildren,
 )
 
+interface AppChasingRouteChildren {
+  AppChasingCadenceRoute: typeof AppChasingCadenceRoute
+  AppChasingOverridesRoute: typeof AppChasingOverridesRoute
+  AppChasingIndexRoute: typeof AppChasingIndexRoute
+}
+
+const AppChasingRouteChildren: AppChasingRouteChildren = {
+  AppChasingCadenceRoute: AppChasingCadenceRoute,
+  AppChasingOverridesRoute: AppChasingOverridesRoute,
+  AppChasingIndexRoute: AppChasingIndexRoute,
+}
+
+const AppChasingRouteWithChildren = AppChasingRoute._addFileChildren(
+  AppChasingRouteChildren,
+)
+
 interface AppRouteChildren {
   AppAccountsRoute: typeof AppAccountsRouteWithChildren
   AppAddEntriesRoute: typeof AppAddEntriesRoute
-  AppChasingRoute: typeof AppChasingRoute
+  AppChasingRoute: typeof AppChasingRouteWithChildren
   AppDashboardRoute: typeof AppDashboardRoute
   AppInvoicesRoute: typeof AppInvoicesRoute
   AppPaymentsRoute: typeof AppPaymentsRoute
@@ -743,7 +814,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAccountsRoute: AppAccountsRouteWithChildren,
   AppAddEntriesRoute: AppAddEntriesRoute,
-  AppChasingRoute: AppChasingRoute,
+  AppChasingRoute: AppChasingRouteWithChildren,
   AppDashboardRoute: AppDashboardRoute,
   AppInvoicesRoute: AppInvoicesRoute,
   AppPaymentsRoute: AppPaymentsRoute,
