@@ -12,14 +12,23 @@ type MetricTileProps = {
   subline: string;
   /** The overdue tile carries its number in danger ink. */
   tone?: "default" | "danger";
-} & Required<Pick<LinkProps, "to">> &
-  Pick<LinkProps, "search">;
+  /**
+   * Where the tile leads. Omitted for a figure with no screen behind it (the
+   * Reports DSO and hours-saved tiles): a link to nowhere would be a dead click.
+   */
+  to?: LinkProps["to"];
+} & Pick<LinkProps, "search">;
+
+const TILE_CLASSES = "block rounded-card border border-hairline bg-card px-5 py-4";
 
 /**
  * Not a wrapper around `ui/card`: the whole tile has to be one anchor so the
  * entire card is the hit target and keyboard users land on it once. `Card` is a
  * div, and nesting a card inside a link would give a link wrapping a box rather
  * than a box that is a link.
+ *
+ * Without `to` the tile is a plain box with no hover, so it does not invite a
+ * click it cannot answer.
  *
  * Eyebrow tracking is `tracking-widest` (0.1em) where the spec says 0.08em —
  * Tailwind's scale has no 0.08em step and `tracking-[0.08em]` would be a second
@@ -33,15 +42,8 @@ export function MetricTile({
   to,
   search,
 }: MetricTileProps) {
-  return (
-    <Link
-      to={to}
-      // Spread rather than `search={search}`: under exactOptionalPropertyTypes
-      // an explicit undefined is not the same as an absent prop, and Link's
-      // search type does not admit undefined.
-      {...(search === undefined ? {} : { search })}
-      className="block rounded-card border border-hairline bg-card px-5 py-4 transition-colors duration-150 hover:bg-hovered"
-    >
+  const content = (
+    <>
       {eyebrow ? (
         <span className="block text-eyebrow font-semibold tracking-widest text-fg-muted uppercase">
           {eyebrow}
@@ -62,6 +64,21 @@ export function MetricTile({
         {value}
       </span>
       <span className="mt-1 block text-prose font-normal text-fg-soft">{subline}</span>
+    </>
+  );
+
+  if (to === undefined) return <div className={TILE_CLASSES}>{content}</div>;
+
+  return (
+    <Link
+      to={to}
+      // Spread rather than `search={search}`: under exactOptionalPropertyTypes
+      // an explicit undefined is not the same as an absent prop, and Link's
+      // search type does not admit undefined.
+      {...(search === undefined ? {} : { search })}
+      className={cn(TILE_CLASSES, "transition-colors duration-150 hover:bg-hovered")}
+    >
+      {content}
     </Link>
   );
 }

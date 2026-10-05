@@ -21,7 +21,7 @@ import { z } from "zod";
  * sent instead of a string (caught by `z.string()`) and a pre-formatted display
  * value like "18,40,000" or "₹1,840,000" sneaking in from the backend.
  */
-const moneyString = z
+export const moneyString = z
   .string()
   .regex(/^-?\d+(\.\d{1,2})?$/, 'Money must be a plain decimal string, e.g. "1840000.00"');
 

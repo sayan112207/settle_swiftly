@@ -40,6 +40,12 @@ type BaseColumn = {
    */
   ariaSort?: "none" | "ascending" | "descending" | "other";
   onHeaderClick?: () => void;
+  /**
+   * Lets this column's text wrap, and the table fit its container instead of
+   * scrolling. For prose columns in half-width tables (Reports), where a
+   * sideways scroll would hide the sentence the row exists to show.
+   */
+  wrap?: boolean;
 };
 
 type TextColumn<Row> = BaseColumn & {
@@ -81,8 +87,9 @@ type DataTableProps<Row> = {
  * tokens file does not define, so `py-3` stands in at 12px.
  */
 export function DataTable<Row>({ columns, rows, rowKey, isRowSelected }: DataTableProps<Row>) {
+  const fits = columns.some((column) => column.wrap);
   return (
-    <Table className="min-w-max border-collapse">
+    <Table className={cn("border-collapse", fits ? "w-full" : "min-w-max")}>
       <TableHeader>
         <TableRow className="border-0 hover:bg-transparent">
           {columns.map((column) => (
@@ -119,7 +126,8 @@ export function DataTable<Row>({ columns, rows, rowKey, isRowSelected }: DataTab
                 <TableCell
                   key={column.id}
                   className={cn(
-                    "whitespace-nowrap border-b border-hairline px-3 py-3 text-body font-semibold text-fg",
+                    "border-b border-hairline px-3 py-3 text-body font-semibold text-fg",
+                    column.wrap ? "min-w-40 whitespace-normal" : "whitespace-nowrap",
                     column.align === "right" && "text-right",
                   )}
                 >
