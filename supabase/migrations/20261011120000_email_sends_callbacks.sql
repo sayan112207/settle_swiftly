@@ -42,7 +42,12 @@ create table public.email_sends (
   provider   text not null default 'smtp2go' check (btrim(provider) <> ''),
   -- The provider's own id for the message, used to join callbacks back to this
   -- row. NULL until the API accepts it — a `failed` send never gets one.
-  provider_message_id text,
+  --
+  -- Store NULL, never ''. A rejected /email/send returns `"email_id": ""`, and
+  -- an empty string is a value: two of them collide on the unique index below,
+  -- where two NULLs do not. The sender normalises it. (Verified live — a send
+  -- from an unverified domain returns HTTP 200 with email_id "".)
+  provider_message_id text check (provider_message_id <> ''),
 
   to_email   text not null check (btrim(to_email) <> ''),
   subject    text,
@@ -99,10 +104,28 @@ create table public.email_callbacks (
   org_id     uuid references public.orgs (id) on delete cascade,
 
   provider_message_id text,
-  -- The provider's event id, where it supplies one. Free text rather than an
-  -- enum: an unrecognised event must still be stored, not rejected at the door.
+  -- The provider's event id, where it supplies one. SMTP2GO does not: its
+  -- activity events carry email_id, date, event and recipient and nothing that
+  -- identifies the event itself (verified against the live API). Kept because
+  -- other providers do supply one, and because it is the better dedupe key
+  -- whenever it exists.
   provider_event_id   text,
+  -- Free text rather than an enum: an unrecognised event must still be stored,
+  -- not rejected at the door. Observed so far: processed, rejected.
   event      text not null check (btrim(event) <> ''),
+
+  -- What makes this event distinct, computed by the ingester.
+  --
+  -- Not a generated column: deriving it would need occurred_at::text, which is
+  -- not immutable for timestamptz and so cannot be stored-generated. Not the
+  -- provider's event id either — SMTP2GO has none, so a unique index on that
+  -- alone would be NULL on every row and dedupe nothing at all.
+  --
+  -- The ingester uses provider_event_id when present, else the natural key
+  -- (message id, event, recipient, timestamp). All four are needed: one send
+  -- emits `processed` and `rejected` sharing an email_id AND a timestamp, and
+  -- a multi-recipient message repeats both per recipient.
+  dedupe_key text not null check (btrim(dedupe_key) <> ''),
 
   -- Copied out of the payload so unmatched events are still queryable by who
   -- they were about.
@@ -117,13 +140,12 @@ create table public.email_callbacks (
   processed_at timestamptz
 );
 
--- Webhooks redeliver. Dedupe on the provider's event id where it gives one;
--- where it does not, the apply step is written to be idempotent instead —
--- setting delivery_state to 'bounced' twice costs nothing. Tighten this once
--- the real payload shape is known; `payload` is kept so that is possible.
-create unique index email_callbacks_provider_event_uniq
-  on public.email_callbacks (provider, provider_event_id)
-  where provider_event_id is not null;
+-- Webhooks redeliver, and a poll over /activity/search re-reads a window it
+-- has already seen, so both paths need this. Total, not partial: every row
+-- carries a dedupe_key, so every row is covered — which a unique index on the
+-- provider's own event id would not have been, SMTP2GO supplying none.
+create unique index email_callbacks_dedupe_uniq
+  on public.email_callbacks (provider, dedupe_key);
 
 create index email_callbacks_message_idx
   on public.email_callbacks (provider, provider_message_id)
