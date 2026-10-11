@@ -35,3 +35,21 @@ function requireServerEnv(name: string): string {
 export function getServiceRoleKey(): string {
   return requireServerEnv("SUPABASE_SERVICE_ROLE_KEY");
 }
+
+/**
+ * SMTP2GO, which sends the chase reminders. Travels as the
+ * `X-Smtp2go-Api-Key` header — never as the `api_key` body field the API also
+ * accepts, because a body is what gets logged when a request is traced.
+ */
+export function getSmtp2goApiKey(): string {
+  return requireServerEnv("SMTP2GO_API_KEY");
+}
+
+/**
+ * SMTP2GO's API root, overridable because the service also serves regional
+ * hosts. Not `requireServerEnv`: a default that works for most accounts is
+ * better than a variable every deployment has to set identically.
+ */
+export function getSmtp2goApiBase(): string {
+  return readServerEnv("SMTP2GO_API_BASE") ?? "https://api.smtp2go.com/v3";
+}
