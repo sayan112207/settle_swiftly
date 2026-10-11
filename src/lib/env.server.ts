@@ -53,3 +53,16 @@ export function getSmtp2goApiKey(): string {
 export function getSmtp2goApiBase(): string {
   return readServerEnv("SMTP2GO_API_BASE") ?? "https://api.smtp2go.com/v3";
 }
+
+/**
+ * The address reminders are sent from. Must be a Verified Sender at the
+ * provider, or every send is refused.
+ *
+ * One address for the whole deployment, with each org's name as the From
+ * *name* — see `senderHeader`. Per-org sending addresses would mean every
+ * customer verifying their own domain before they could chase anybody, which
+ * is a setup wall in front of the product's first useful action.
+ */
+export function getReminderSenderEmail(): string {
+  return requireServerEnv("SMTP2GO_SENDER_EMAIL");
+}
