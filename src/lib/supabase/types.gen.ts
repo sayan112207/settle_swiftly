@@ -968,6 +968,139 @@ export type Database = {
           },
         ]
       }
+      email_callbacks: {
+        Row: {
+          dedupe_key: string
+          event: string
+          id: string
+          occurred_at: string | null
+          org_id: string | null
+          payload: Json
+          processed_at: string | null
+          provider: string
+          provider_event_id: string | null
+          provider_message_id: string | null
+          received_at: string
+          send_id: string | null
+          to_email: string | null
+        }
+        Insert: {
+          dedupe_key: string
+          event: string
+          id?: string
+          occurred_at?: string | null
+          org_id?: string | null
+          payload: Json
+          processed_at?: string | null
+          provider?: string
+          provider_event_id?: string | null
+          provider_message_id?: string | null
+          received_at?: string
+          send_id?: string | null
+          to_email?: string | null
+        }
+        Update: {
+          dedupe_key?: string
+          event?: string
+          id?: string
+          occurred_at?: string | null
+          org_id?: string | null
+          payload?: Json
+          processed_at?: string | null
+          provider?: string
+          provider_event_id?: string | null
+          provider_message_id?: string | null
+          received_at?: string
+          send_id?: string | null
+          to_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_callbacks_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_callbacks_send_id_fkey"
+            columns: ["send_id"]
+            isOneToOne: false
+            referencedRelation: "email_sends"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_sends: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          org_id: string | null
+          provider: string
+          provider_message_id: string | null
+          purpose: Database["public"]["Enums"]["email_purpose"]
+          reminder_id: string | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["email_send_status"]
+          subject: string | null
+          to_email: string
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          org_id?: string | null
+          provider?: string
+          provider_message_id?: string | null
+          purpose: Database["public"]["Enums"]["email_purpose"]
+          reminder_id?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["email_send_status"]
+          subject?: string | null
+          to_email: string
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          org_id?: string | null
+          provider?: string
+          provider_message_id?: string | null
+          purpose?: Database["public"]["Enums"]["email_purpose"]
+          reminder_id?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["email_send_status"]
+          subject?: string | null
+          to_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_sends_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sends_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sends_reminder_id_fkey"
+            columns: ["reminder_id"]
+            isOneToOne: false
+            referencedRelation: "reminders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoices: {
         Row: {
           account_id: string
@@ -1511,6 +1644,20 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      email_callbacks_link: { Args: never; Returns: number }
+      email_callbacks_sweep_unmatched: {
+        Args: { p_older_than?: string }
+        Returns: number
+      }
+      email_delivery_apply: {
+        Args: {
+          p_callback_ids: string[]
+          p_contact: string
+          p_last_bounced?: string
+          p_state: Database["public"]["Enums"]["delivery_state"]
+        }
+        Returns: undefined
+      }
       reconcile_broken_promises: { Args: { p_org: string }; Returns: number }
       schedule_reminder: {
         Args: {
@@ -1543,6 +1690,8 @@ export type Database = {
       contact_channel: "email" | "whatsapp" | "sms"
       contact_priority: "P0" | "P1" | "P2"
       delivery_state: "verified" | "unverified" | "bounced"
+      email_purpose: "reminder" | "verification"
+      email_send_status: "queued" | "sent" | "failed"
       invoice_status:
         | "draft"
         | "open"
@@ -1683,6 +1832,8 @@ export const Constants = {
       contact_channel: ["email", "whatsapp", "sms"],
       contact_priority: ["P0", "P1", "P2"],
       delivery_state: ["verified", "unverified", "bounced"],
+      email_purpose: ["reminder", "verification"],
+      email_send_status: ["queued", "sent", "failed"],
       invoice_status: [
         "draft",
         "open",

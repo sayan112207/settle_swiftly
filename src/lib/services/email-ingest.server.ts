@@ -12,9 +12,8 @@
  * keep an exact cursor against a provider whose events arrive out of order.
  */
 
-import type { SupabaseClient } from "@supabase/supabase-js";
-
 import { getAdminSupabase } from "@/lib/supabase/admin-client.server";
+import type { Json } from "@/lib/supabase/types.gen";
 import {
   classifyEvent,
   dedupeKeyFor,
@@ -24,26 +23,6 @@ import {
 import { searchActivity } from "@/lib/services/smtp2go.server";
 
 const PROVIDER = "smtp2go";
-
-/**
- * The admin client, widened past the generated types.
- *
- * `types.gen.ts` is generated from the **deployed** schema, so it does not
- * know `email_sends`, `email_callbacks` or the three functions below until
- * `bun run db:push` and then `bun run db:types` have run. Hand-editing a
- * generated file would just be undone by the next generation.
- *
- * So the widening happens here, once, and nowhere else — the queries below
- * are written against the real column names, so regenerating the types and
- * deleting this function is the whole of the cleanup.
- *
- * Until then nothing in this file is type-checked against the schema, which
- * is exactly why it has not been run yet: it needs one real pass before it
- * can be trusted, particularly the embedded `email_sends!inner(...)` joins.
- */
-function emailDb(): SupabaseClient {
-  return getAdminSupabase() as unknown as SupabaseClient;
-}
 
 /**
  * How far back each run re-reads.
@@ -75,7 +54,7 @@ export type IngestResult = {
  * the provider is bounded by that window.
  */
 export async function ingestEmailActivity(now: Date = new Date()): Promise<IngestResult> {
-  const supabase = emailDb();
+  const supabase = getAdminSupabase();
 
   const since = await windowStart(supabase, now);
   const endDate = now.toISOString();
@@ -105,7 +84,10 @@ export async function ingestEmailActivity(now: Date = new Date()): Promise<Inges
     to_email: event.recipient && event.recipient !== "*" ? event.recipient : (event.to ?? null),
     occurred_at: event.date,
     dedupe_key: dedupeKeyFor(PROVIDER, event),
-    payload: event,
+    // Json by construction — it came back from `response.json()`. Zod's
+    // passthrough output type cannot express an open object as Json, so the
+    // cast states what the runtime already guarantees.
+    payload: event as unknown as Json,
   }));
 
   let inserted = 0;
@@ -149,7 +131,10 @@ export async function ingestEmailActivity(now: Date = new Date()): Promise<Inges
  * empty table it falls back to the overlap window rather than the provider's
  * whole retention, so a first run cannot pull a year of history in one go.
  */
-async function windowStart(supabase: SupabaseClient, now: Date): Promise<string> {
+async function windowStart(
+  supabase: ReturnType<typeof getAdminSupabase>,
+  now: Date,
+): Promise<string> {
   const { data } = await supabase
     .from("email_callbacks")
     .select("occurred_at")
@@ -171,7 +156,7 @@ async function windowStart(supabase: SupabaseClient, now: Date): Promise<string>
  * built from one page would condemn an address whose earlier successes are
  * sitting in the same table.
  */
-async function applyVerdicts(supabase: SupabaseClient): Promise<number> {
+async function applyVerdicts(supabase: ReturnType<typeof getAdminSupabase>): Promise<number> {
   const { data: pending, error } = await supabase
     .from("email_callbacks")
     .select("id, send_id, email_sends!inner(contact_id)")
@@ -196,8 +181,10 @@ async function applyVerdicts(supabase: SupabaseClient): Promise<number> {
     const { error: applyError } = await supabase.rpc("email_delivery_apply", {
       p_contact: contactId,
       p_state: verdict.state,
-      p_last_bounced: verdict.lastBouncedAt,
       p_callback_ids: callbackIds,
+      // Omitted rather than null when nothing has bounced: the function
+      // coalesces a missing value to the column's current one.
+      ...(verdict.lastBouncedAt ? { p_last_bounced: verdict.lastBouncedAt } : {}),
     });
     if (applyError) throw new Error(`Applying delivery state failed: ${applyError.message}`);
     updated += 1;
@@ -207,7 +194,7 @@ async function applyVerdicts(supabase: SupabaseClient): Promise<number> {
 
 /** Every stored event for one contact, oldest first, classified. */
 async function contactHistory(
-  supabase: SupabaseClient,
+  supabase: ReturnType<typeof getAdminSupabase>,
   contactId: string,
 ): Promise<DeliveryHistoryEntry[]> {
   const { data, error } = await supabase

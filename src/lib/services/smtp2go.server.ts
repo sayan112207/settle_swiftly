@@ -18,6 +18,11 @@ import {
 /** Hung-request cap, so a stalled provider cannot wedge a background job. */
 const TIMEOUT_MS = 20_000;
 
+/**
+ * One authenticated POST. Returns the status alongside the body because the
+ * two disagree here: a refused send comes back as HTTP 200, so callers decide
+ * what happened by reading both.
+ */
 async function post(path: string, body: unknown): Promise<{ status: number; json: unknown }> {
   const response = await fetch(`${getSmtp2goApiBase()}${path}`, {
     method: "POST",
