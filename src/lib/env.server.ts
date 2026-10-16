@@ -35,3 +35,34 @@ function requireServerEnv(name: string): string {
 export function getServiceRoleKey(): string {
   return requireServerEnv("SUPABASE_SERVICE_ROLE_KEY");
 }
+
+/**
+ * SMTP2GO, which sends the chase reminders. Travels as the
+ * `X-Smtp2go-Api-Key` header — never as the `api_key` body field the API also
+ * accepts, because a body is what gets logged when a request is traced.
+ */
+export function getSmtp2goApiKey(): string {
+  return requireServerEnv("SMTP2GO_API_KEY");
+}
+
+/**
+ * SMTP2GO's API root, overridable because the service also serves regional
+ * hosts. Not `requireServerEnv`: a default that works for most accounts is
+ * better than a variable every deployment has to set identically.
+ */
+export function getSmtp2goApiBase(): string {
+  return readServerEnv("SMTP2GO_API_BASE") ?? "https://api.smtp2go.com/v3";
+}
+
+/**
+ * The address reminders are sent from. Must be a Verified Sender at the
+ * provider, or every send is refused.
+ *
+ * One address for the whole deployment, with each org's name as the From
+ * *name* — see `senderHeader`. Per-org sending addresses would mean every
+ * customer verifying their own domain before they could chase anybody, which
+ * is a setup wall in front of the product's first useful action.
+ */
+export function getReminderSenderEmail(): string {
+  return requireServerEnv("SMTP2GO_SENDER_EMAIL");
+}
