@@ -52,7 +52,14 @@ create or replace function public.schedule_reminder(
   -- The step's ceiling, from the account's merged cadence. Text rather than an
   -- enum because that is how `account_cadence_steps.recipients` is stored.
   p_recipients    text,
-  p_scheduled_for date default current_date
+  -- No default. `current_date` is the *database session's* date, which on a
+  -- hosted Postgres is UTC — and the org that owns this invoice is not. For
+  -- the hours when the two disagree, the escalation arithmetic below would
+  -- run a day out and a reminder could gain or miss a tier at the boundary.
+  -- The repo's own rule: "timezone conversion silently shifts them by a day".
+  -- The caller already computes the org-local date to choose the step, so it
+  -- passes that rather than letting the database guess.
+  p_scheduled_for date
 )
 returns public.reminders
 language plpgsql
@@ -73,8 +80,17 @@ declare
   v_reminder     public.reminders;
   v_recipients   int;
 begin
-  if p_recipients not in ('p0', 'p0p1', 'p0p1p2') then
+  -- `is null` first, and not folded into the NOT IN. `null not in (...)`
+  -- evaluates to NULL, the IF does not fire, and the CASE below falls to its
+  -- ELSE — which is P2. A missing ceiling would become the *most* permissive
+  -- one, which is exactly the wrong direction for a function that decides who
+  -- receives a chase.
+  if p_recipients is null or p_recipients not in ('p0', 'p0p1', 'p0p1p2') then
     raise exception 'unknown_recipients' using errcode = 'P0001';
+  end if;
+
+  if p_scheduled_for is null then
+    raise exception 'scheduled_for_required' using errcode = 'P0001';
   end if;
 
   select i.org_id, i.account_id, i.due_date, a.p1_after_days, a.p2_after_days

@@ -107,12 +107,28 @@ choice evaporates.
 
 - `null` — derive from `due_date` as normal. The default for everything
   created in the product.
-- a date — the ladder's day zero is this instead of `due_date`. "Start at the
-  step matching their age" writes `due_date`; "start from the beginning"
-  writes today; "a date I pick" writes that date.
-- "Don't chase" is **not** a far-future date. Use the existing account-level
-  stop, or an explicit per-invoice flag — a sentinel date that silently
-  becomes live when it arrives is the kind of thing nobody remembers setting.
+- a date — the ladder's **day zero**, standing in for `due_date`. Day zero is
+  not the day the first reminder goes out: s1 sits at −3, so the ladder starts
+  three days earlier.
+
+  | Choice                               | `chase_start_on`                         |
+  | ------------------------------------ | ---------------------------------------- |
+  | Start at the step matching their age | `due_date` (i.e. leave it null)          |
+  | Start from the beginning             | **today − s1.offset_days**, so today + 3 |
+  | Start on a date I pick               | that date + 3, same reasoning            |
+
+  Writing plain `today` would make `daysSinceAnchor` zero, whose latest due
+  step is s2 — so "start from the beginning" would skip the beginning. Any
+  UI offering a start date must apply the same shift, or state that it means
+  day zero rather than first contact.
+
+- "Don't chase" is a **per-invoice flag**, `invoices.chase_stopped_at
+timestamptz null`. Not a far-future date: a sentinel that silently goes live
+  when it arrives is the kind of thing nobody remembers setting. Not the
+  account-level stop either — that would also silence invoices outside the
+  import the user was answering about, which is not what they were asked.
+  The scheduler skips any invoice with it set, and clearing it resumes the
+  ladder wherever the anchor now places it.
 
 Re-import must not clobber a set value. The importer upserts on
 `(org_id, account_id, invoice_number_normalized)`; `chase_start_on` is a user
@@ -138,10 +154,23 @@ daysSinceAnchor >= step.offset_days
 
 where `daysSinceAnchor = daysBetween(chase_start_on ?? due_date, today)`.
 
-**Fire the latest due step that has not been sent, never the backlog.** An
-invoice first seen at +20 sends s4 and nothing else; s1–s3 are skipped, not
-queued. Nobody wants four emails at once, and `reminders_invoice_step_uniq`
-means a skipped step can never arrive later.
+**Fire the latest due step whose number is above every step already sent.**
+
+```
+candidates = steps where offset_days <= daysSinceAnchor
+                   and step_number > max(step already sent for this invoice)
+fire        = the highest-numbered candidate, or nothing
+```
+
+The `>` clause is load-bearing and easy to leave out. Without it, an invoice
+first seen at +20 sends s4 on the first run — then on the next run s4 is sent
+but s3 is still due and unsent, so "latest due unsent" selects s3, then s2,
+then s1. The backlog arrives anyway, in reverse, one per hour. Skipped steps
+must be skipped _permanently_, which means comparing against the high-water
+mark rather than against what is missing.
+
+Nobody wants four emails at once, which is why the backlog is dropped rather
+than queued.
 
 ---
 
@@ -156,11 +185,19 @@ and must not be reimplemented:
 3. `paused` — `chase_mode = 'stopped'`, or `paused_at` set and `paused_until`
    null or not yet past
 
-Then per invoice, which `ineligibleReason()` already decides:
+Then per invoice:
 
 4. `Disputed`
 5. `Promise pending` — an active promise pause
-6. `Not yet due` — relative to the **anchor**, not `due_date`
+6. **Has any step come due?** — §4, not an overdue check
+
+**Do not reuse `ineligibleReason()` wholesale here.** It folds in
+`Not yet due` when `daysOverdue <= 0`, which is right for the dashboard's
+chase queue — you only chase overdue invoices there — and wrong for a cadence
+whose first step is at **−3**. Applied as-is it would reject every invoice
+until the day after it falls due, so s1 could never send and s2 only by
+accident. Take its `Disputed` and `Promise pending` clauses; let step
+selection answer the timing.
 
 Then the send window: `send_window_mode`, `send_window_opens` / `_closes` /
 `_days`, in the org's timezone. Outside it, do nothing and leave the step
@@ -188,6 +225,27 @@ without resending what went.
 Insert the `reminders` row **before** calling `sendReminder`, for the reason
 `email_sends` is written before its send: a message the database never heard
 of gets sent again.
+
+That makes the unique index necessary but not sufficient. Row existence means
+"this step was attempted", not "this step was delivered" — so retry keys on
+`reminders.status`, which already has the vocabulary:
+
+| `status`    | Meaning                                                | Scheduler         |
+| ----------- | ------------------------------------------------------ | ----------------- |
+| `scheduled` | row written, send not yet attempted or still in flight | retry             |
+| `sent`      | provider accepted it; `sent_at` set                    | done              |
+| `failed`    | provider refused it                                    | retry, with a cap |
+| `cancelled` | deliberately abandoned                                 | never retry       |
+
+Without this a send that failed after the insert would be indistinguishable
+from one that succeeded, and the step would be treated as delivered for ever.
+
+The uncertain case carries through from `sendReminder`: a send that **threw**
+is recorded as failed but worded as unknown, because a timeout can land after
+the provider accepted. Retrying it may send a second copy. Cap retries low,
+prefer a visible stuck reminder over a customer receiving the same chase
+twice, and never let a retry advance the ladder — it re-attempts one step, it
+does not move to the next.
 
 ---
 
