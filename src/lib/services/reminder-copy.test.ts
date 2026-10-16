@@ -76,9 +76,20 @@ describe("body", () => {
     expect(textBody.includes("when it will be paid")).toBe(true);
   });
 
-  test("one day overdue is not pluralised", () => {
-    const { textBody } = composeReminder({ ...BASE, daysOverdue: 1 });
-    expect(textBody.includes("1 day overdue")).toBe(true);
+  test("one day overdue is not pluralised, in any tone", () => {
+    // Firm said "1 days overdue" until review caught it. Reachable because
+    // tone is editable per account — nothing stops Firm on an early step.
+    for (const tone of ["Standard", "Firm"] as const) {
+      const { subject, textBody } = composeReminder({ ...BASE, tone, daysOverdue: 1 });
+      expect(textBody.includes("1 day overdue")).toBe(true);
+      expect(`${subject} ${textBody}`.includes("1 days")).toBe(false);
+    }
+  });
+
+  test("plurals survive above one", () => {
+    const { subject, textBody } = composeReminder({ ...BASE, tone: "Firm", daysOverdue: 45 });
+    expect(textBody.includes("45 days overdue")).toBe(true);
+    expect(subject).toBe("Invoice INV-2231 — 45 days overdue");
   });
 
   test("firm drops the greeting and addresses the company", () => {

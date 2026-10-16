@@ -59,12 +59,36 @@ export async function sendReminder(input: SendReminderInput): Promise<SendRemind
     throw new Error(`Could not record the send: ${insertError?.message ?? "no row returned"}`);
   }
 
-  const result = await sendEmail({
-    sender,
-    to: input.toEmail,
-    subject: message.subject,
-    textBody: message.textBody,
-  });
+  // `sendEmail` can throw as well as return — a timeout from
+  // `AbortSignal.timeout`, a DNS failure, a body that is not JSON. Letting
+  // that escape would leave this row `queued` for ever: no error, no message
+  // id, and nothing to explain it. The row was written first precisely so a
+  // failure would be visible, and an exception is the case that most needs to
+  // be.
+  //
+  // Recorded as `failed`, but worded as unknown, because a timeout is not
+  // proof the provider refused the message — it may well have accepted and
+  // queued it before the connection died. Whoever builds retry has to treat
+  // this status as "may already have been delivered" and not simply send
+  // again, which is why the error text says so rather than just naming the
+  // exception.
+  let result: Awaited<ReturnType<typeof sendEmail>>;
+  try {
+    result = await sendEmail({
+      sender,
+      to: input.toEmail,
+      subject: message.subject,
+      textBody: message.textBody,
+    });
+  } catch (thrown) {
+    // `String(thrown)` rather than a cast: a throw is not required to be an
+    // Error, and `undefined.message` here would lose the failure entirely.
+    const reason = thrown instanceof Error ? thrown.message : String(thrown);
+    result = {
+      ok: false,
+      error: `The send did not complete, so its outcome is unknown and it may still have been delivered: ${reason}`,
+    };
+  }
 
   // `provider_message_id` is only ever set alongside `sent`, which is what the
   // `email_sends_sent_has_message_id` constraint insists on. A refusal stores

@@ -59,6 +59,11 @@ export type ReminderMessage = {
  */
 export const REMINDER_LANGUAGES: readonly ContactLanguage[] = ["en"];
 
+/** `1 day`, `45 days`. Collections copy that says "1 days" reads as unattended. */
+function days(n: number): string {
+  return `${n} ${n === 1 ? "day" : "days"}`;
+}
+
 /** First name only, matching how the escalation preview already addresses people. */
 function firstName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
@@ -86,7 +91,7 @@ export function reminderSubject(ctx: ReminderContext): string {
   if (tone === "Standard") {
     return `Invoice ${invoiceNumber} is overdue — ${orgName}`;
   }
-  return `Invoice ${invoiceNumber} — ${daysOverdue} days overdue`;
+  return `Invoice ${invoiceNumber} — ${days(daysOverdue)} overdue`;
 }
 
 /**
@@ -126,7 +131,7 @@ export function reminderBody(ctx: ReminderContext): string {
     return [
       `Hi ${name},`,
       ``,
-      `Invoice ${invoiceNumber} for ${amount} was due on ${due} and is now ${daysOverdue} ${daysOverdue === 1 ? "day" : "days"} overdue.`,
+      `Invoice ${invoiceNumber} for ${amount} was due on ${due} and is now ${days(daysOverdue)} overdue.`,
       ``,
       `Could you let us know when it will be paid? If there is a problem with the invoice, or it is waiting on something at your end, reply here and we will help.`,
       ``,
@@ -139,7 +144,7 @@ export function reminderBody(ctx: ReminderContext): string {
   // It names the account rather than the person: at this point the message is
   // to the company, and the individual should not feel personally accused.
   return [
-    `Invoice ${invoiceNumber} for ${amount} is ${daysOverdue} days overdue.`,
+    `Invoice ${invoiceNumber} for ${amount} is ${days(daysOverdue)} overdue.`,
     ``,
     `It was due on ${due} and remains unpaid. Please arrange payment, or tell us today when it will be made.`,
     ``,

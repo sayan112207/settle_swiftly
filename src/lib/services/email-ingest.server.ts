@@ -135,7 +135,7 @@ async function windowStart(
   supabase: ReturnType<typeof getAdminSupabase>,
   now: Date,
 ): Promise<string> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("email_callbacks")
     .select("occurred_at")
     .eq("provider", PROVIDER)
@@ -143,6 +143,14 @@ async function windowStart(
     .order("occurred_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  // Thrown rather than absorbed, unlike the empty-table case below. A failed
+  // query also yields no row, and treating the two the same would silently
+  // narrow the window to the overlap — and then *keep* it narrow, because the
+  // next run derives its window from the newest stored event, which this run
+  // never advanced past. Events older than the overlap would be skipped for
+  // good, with the run reporting success.
+  if (error) throw new Error(`Reading the ingest window failed: ${error.message}`);
 
   const newest = data?.occurred_at ? new Date(data.occurred_at) : now;
   return new Date(newest.getTime() - OVERLAP_MINUTES * 60_000).toISOString();
