@@ -315,9 +315,30 @@ does not move to the next.
 
 ## 7. Quota
 
-The provider account allows 1,000 emails a month. A fully-escalated invoice
-costs 12 (2 steps × P0, 2 × P0+P1, 2 × P0+P1+P2), so roughly 80 invoices a
-month before sends start failing silently mid-ladder.
+The provider account allows 1,000 emails a month, shared with the
+verification mail Supabase Auth sends through the same account.
+
+A fully-escalated invoice costs **9** emails on the default cadence and
+default escalation days, assuming one contact per tier:
+
+| Step   | Effective recipients | Emails |
+| ------ | -------------------- | ------ |
+| s1, s2 | P0                   | 1 each |
+| s3, s4 | P0 (day < 21)        | 1 each |
+| s5     | P0 + P1              | 2      |
+| s6     | P0 + P1 + P2         | 3      |
+
+That is roughly 111 invoices a month before sends start failing silently
+mid-ladder.
+
+Count the ceiling, not the cadence. The raw `recipients` on s3 and s4 say
+`p0p1`, which would give 12 — but §1's escalation cap holds P1 back until day
+21, and both steps fire before it. Any estimate taken from the cadence alone
+is high by a quarter.
+
+It scales with contacts per tier, not with tiers: the domain allows several
+P0s — two AP staff both receiving the message — and each one is another email
+on every step from s1 onward.
 
 Check `cycle_remaining` from `/stats/email_summary` before a batch and stop
 early with a recorded reason. The API key already has that permission. Running
