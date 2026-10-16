@@ -64,6 +64,24 @@ function days(n: number): string {
   return `${n} ${n === 1 ? "day" : "days"}`;
 }
 
+/**
+ * Where the invoice stands relative to its due date.
+ *
+ * Every tone branches on this, and none may use the word *overdue* outside
+ * `late`. The default cadence puts Standard on the "Due date" step, so
+ * assuming lateness would tell a customer their invoice is overdue on the day
+ * it falls due — a false statement, to someone who has not yet done anything
+ * wrong, sent by the product whose whole claim is that it chases without
+ * damaging the relationship.
+ */
+type Timing = "upcoming" | "due_today" | "late";
+
+/** `daysOverdue` to the three states the copy branches on. */
+function timingOf(daysOverdue: number): Timing {
+  if (daysOverdue > 0) return "late";
+  return daysOverdue === 0 ? "due_today" : "upcoming";
+}
+
 /** First name only, matching how the escalation preview already addresses people. */
 function firstName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
@@ -83,15 +101,21 @@ function firstName(fullName: string): string {
  */
 export function reminderSubject(ctx: ReminderContext): string {
   const { invoiceNumber, orgName, daysOverdue, tone } = ctx;
+  const timing = timingOf(daysOverdue);
+  const due = formatShortDate(ctx.dueDate);
+
   if (tone === "Gentle") {
-    return daysOverdue > 0
+    return timing === "late"
       ? `Invoice ${invoiceNumber} from ${orgName}`
-      : `Invoice ${invoiceNumber} from ${orgName} — due ${formatShortDate(ctx.dueDate)}`;
+      : `Invoice ${invoiceNumber} from ${orgName} — due ${timing === "due_today" ? "today" : due}`;
   }
   if (tone === "Standard") {
-    return `Invoice ${invoiceNumber} is overdue — ${orgName}`;
+    if (timing === "late") return `Invoice ${invoiceNumber} is overdue — ${orgName}`;
+    if (timing === "due_today") return `Invoice ${invoiceNumber} is due today — ${orgName}`;
+    return `Invoice ${invoiceNumber} is due ${due} — ${orgName}`;
   }
-  return `Invoice ${invoiceNumber} — ${days(daysOverdue)} overdue`;
+  if (timing === "late") return `Invoice ${invoiceNumber} — ${days(daysOverdue)} overdue`;
+  return `Invoice ${invoiceNumber} — due ${timing === "due_today" ? "today" : due}`;
 }
 
 /**
@@ -112,11 +136,16 @@ export function reminderBody(ctx: ReminderContext): string {
   // copy lives or dies on how it reads as a whole sentence, and a template
   // that interpolates "overdue"/"due" into one skeleton produces the stilted
   // half-English that makes a reminder look automated.
+  const timing = timingOf(daysOverdue);
+
   if (tone === "Gentle") {
-    const opening =
-      daysOverdue > 0
-        ? `just a quick reminder that invoice ${invoiceNumber} for ${amount} was due on ${due}.`
-        : `just a quick reminder that invoice ${invoiceNumber} for ${amount} is due on ${due}.`;
+    const when =
+      timing === "late"
+        ? `was due on ${due}`
+        : timing === "due_today"
+          ? `is due today`
+          : `is due on ${due}`;
+    const opening = `just a quick reminder that invoice ${invoiceNumber} for ${amount} ${when}.`;
     return [
       `Hi ${name} — ${opening}`,
       ``,
@@ -128,12 +157,22 @@ export function reminderBody(ctx: ReminderContext): string {
   }
 
   if (tone === "Standard") {
+    const position =
+      timing === "late"
+        ? `Invoice ${invoiceNumber} for ${amount} was due on ${due} and is now ${days(daysOverdue)} overdue.`
+        : timing === "due_today"
+          ? `Invoice ${invoiceNumber} for ${amount} is due today.`
+          : `Invoice ${invoiceNumber} for ${amount} is due on ${due}.`;
+    const ask =
+      timing === "late"
+        ? `Could you let us know when it will be paid?`
+        : `Could you confirm it is scheduled for payment?`;
     return [
       `Hi ${name},`,
       ``,
-      `Invoice ${invoiceNumber} for ${amount} was due on ${due} and is now ${days(daysOverdue)} overdue.`,
+      position,
       ``,
-      `Could you let us know when it will be paid? If there is a problem with the invoice, or it is waiting on something at your end, reply here and we will help.`,
+      `${ask} If there is a problem with the invoice, or it is waiting on something at your end, reply here and we will help.`,
       ``,
       `Thank you,`,
       orgName,
@@ -143,10 +182,20 @@ export function reminderBody(ctx: ReminderContext): string {
   // Firm drops the greeting, states the position, and asks for one thing.
   // It names the account rather than the person: at this point the message is
   // to the company, and the individual should not feel personally accused.
+  const firmPosition =
+    timing === "late"
+      ? [
+          `Invoice ${invoiceNumber} for ${amount} is ${days(daysOverdue)} overdue.`,
+          ``,
+          `It was due on ${due} and remains unpaid. Please arrange payment, or tell us today when it will be made.`,
+        ]
+      : [
+          `Invoice ${invoiceNumber} for ${amount} is due ${timing === "due_today" ? "today" : `on ${due}`}.`,
+          ``,
+          `Please arrange payment by the due date, or tell us today when it will be made.`,
+        ];
   return [
-    `Invoice ${invoiceNumber} for ${amount} is ${days(daysOverdue)} overdue.`,
-    ``,
-    `It was due on ${due} and remains unpaid. Please arrange payment, or tell us today when it will be made.`,
+    ...firmPosition,
     ``,
     `If this invoice is disputed, reply with the details and we will put chasing on hold while it is resolved.`,
     ``,

@@ -86,6 +86,28 @@ describe("body", () => {
     }
   });
 
+  test("nothing calls an invoice overdue before it is", () => {
+    // The default cadence puts Standard on the "Due date" step, so assuming
+    // lateness told a customer their invoice was overdue on the day it fell
+    // due — and printed "-3 days overdue" three days before that.
+    for (const tone of ["Gentle", "Standard", "Firm"] as const) {
+      for (const daysOverdue of [-3, 0]) {
+        const { subject, textBody } = composeReminder({ ...BASE, tone, daysOverdue });
+        const whole = `${subject} ${textBody}`;
+        expect(whole.includes("overdue")).toBe(false);
+        expect(whole.includes("-3")).toBe(false);
+        expect(whole.includes("0 days")).toBe(false);
+      }
+    }
+  });
+
+  test("due today says today, not a date the reader must compare", () => {
+    for (const tone of ["Gentle", "Standard", "Firm"] as const) {
+      const { subject, textBody } = composeReminder({ ...BASE, tone, daysOverdue: 0 });
+      expect(`${subject} ${textBody}`.includes("today")).toBe(true);
+    }
+  });
+
   test("plurals survive above one", () => {
     const { subject, textBody } = composeReminder({ ...BASE, tone: "Firm", daysOverdue: 45 });
     expect(textBody.includes("45 days overdue")).toBe(true);

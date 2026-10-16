@@ -62,6 +62,7 @@ export async function ingestEmailActivity(now: Date = new Date()): Promise<Inges
   // ---- fetch -------------------------------------------------------------
   const events = [];
   let continueToken: string | undefined;
+  let complete = false;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const result = await searchActivity({
       startDate: since,
@@ -70,8 +71,24 @@ export async function ingestEmailActivity(now: Date = new Date()): Promise<Inges
       continueToken,
     });
     events.push(...result.events);
-    if (!result.continueToken || result.events.length === 0) break;
+    if (!result.continueToken || result.events.length === 0) {
+      complete = true;
+      break;
+    }
     continueToken = result.continueToken;
+  }
+
+  // Running out of pages is a failure, not a quiet truncation. Events come
+  // newest first, so a capped run holds the recent end of the window and
+  // misses the old end — and then storing them advances the next run's start
+  // past the gap, losing it for good. The same trap as swallowing the window
+  // query, reached from the other side.
+  if (!complete) {
+    throw new Error(
+      `Delivery events did not fit in ${MAX_PAGES} pages of ${PAGE_LIMIT} from ${since}. ` +
+        `Nothing was stored, so the window is still intact — widen the page cap or ` +
+        `narrow the window and run again.`,
+    );
   }
 
   // ---- store -------------------------------------------------------------
@@ -173,6 +190,13 @@ async function applyVerdicts(supabase: ReturnType<typeof getAdminSupabase>): Pro
   if (error) throw new Error(`Reading pending events failed: ${error.message}`);
 
   // Contact → the callback ids this run is consuming for it.
+  //
+  // A linked send can still have no contact: `contact_id` is `on delete set
+  // null`, so retiring a contact leaves its send history behind, and a
+  // verification send we make ourselves never had one. Those callbacks can
+  // never produce a verdict, and skipping them would leave them unprocessed
+  // for ever — re-read by every run, growing without bound. The sweep retires
+  // them instead; see `email_callbacks_sweep_unmatched`.
   const byContact = new Map<string, string[]>();
   for (const row of pending ?? []) {
     const send = row.email_sends as unknown as { contact_id: string | null } | null;
