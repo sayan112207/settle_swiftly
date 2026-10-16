@@ -154,20 +154,45 @@ daysSinceAnchor >= step.offset_days
 
 where `daysSinceAnchor = daysBetween(chase_start_on ?? due_date, today)`.
 
-**Fire the latest due step whose number is above every step already sent.**
+Selection runs in two phases, and **an outstanding step always beats a new
+one**:
 
 ```
-candidates = steps where offset_days <= daysSinceAnchor
-                   and step_number > max(step already sent for this invoice)
-fire        = the highest-numbered candidate, or nothing
+1. retry   = the lowest-numbered reminder row for this invoice whose
+             status is 'scheduled' or 'failed' and whose attempts are
+             under the cap.           → re-attempt that step, stop here.
+
+2. advance = steps where offset_days <= daysSinceAnchor
+                   and step_number > watermark
+             fire the highest-numbered, or nothing.
+
+   watermark = max step for this invoice whose status is 'sent'
+               or 'cancelled' — steps that are finished, either way.
 ```
 
-The `>` clause is load-bearing and easy to leave out. Without it, an invoice
-first seen at +20 sends s4 on the first run — then on the next run s4 is sent
-but s3 is still due and unsent, so "latest due unsent" selects s3, then s2,
-then s1. The backlog arrives anyway, in reverse, one per hour. Skipped steps
-must be skipped _permanently_, which means comparing against the high-water
-mark rather than against what is missing.
+**Phase 1 before phase 2**, or §6's promise that "a retry re-attempts one step,
+it does not move to the next" is not kept: a failed s4 would be passed over
+and s5 sent in its place, escalating on the strength of a message the customer
+never received.
+
+**The watermark counts `cancelled`, not just `sent`.** Otherwise a step that
+exhausts its retries freezes the invoice for ever — phase 1 keeps selecting
+it, phase 2 never runs, and the ladder stops silently. When attempts reach the
+cap the row is marked `cancelled` with the reason recorded, and the ladder
+continues at the next step. One undeliverable message must not end the
+relationship; if the address itself is the problem, the bounce path already
+moves `contacts.delivery_state` and the account-level gate takes over.
+
+**Attempts are counted, not stored**: `email_sends` carries `reminder_id`, so
+the number of attempts is the number of rows pointing at that reminder. No
+counter column, and no counter to get out of step with reality.
+
+The `> watermark` clause in phase 2 is load-bearing and easy to leave out.
+Without it, an invoice first seen at +20 sends s4 on the first run — then on
+the next run s4 is finished but s3 is still due and unsent, so "latest due
+unsent" selects s3, then s2, then s1. The backlog arrives anyway, in reverse,
+one per hour. Skipped steps must be skipped _permanently_, which means
+comparing against the high-water mark rather than against what is missing.
 
 Nobody wants four emails at once, which is why the backlog is dropped rather
 than queued.
@@ -230,15 +255,54 @@ That makes the unique index necessary but not sufficient. Row existence means
 "this step was attempted", not "this step was delivered" — so retry keys on
 `reminders.status`, which already has the vocabulary:
 
-| `status`    | Meaning                                                | Scheduler         |
-| ----------- | ------------------------------------------------------ | ----------------- |
-| `scheduled` | row written, send not yet attempted or still in flight | retry             |
-| `sent`      | provider accepted it; `sent_at` set                    | done              |
-| `failed`    | provider refused it                                    | retry, with a cap |
-| `cancelled` | deliberately abandoned                                 | never retry       |
+| `status`    | Meaning                             | Scheduler                   |
+| ----------- | ----------------------------------- | --------------------------- |
+| `scheduled` | row written, not yet sent           | claimable                   |
+| `sent`      | provider accepted it; `sent_at` set | done                        |
+| `failed`    | provider refused it                 | claimable, until the cap    |
+| `cancelled` | abandoned, or out of retries        | never again; counts as done |
 
 Without this a send that failed after the insert would be indistinguishable
 from one that succeeded, and the step would be treated as delivered for ever.
+
+### Claiming a row before sending it
+
+Status alone is not enough, because it does not say _whether somebody is
+already working on this row_. Two overlapping runs — an hourly cron that
+overran, or a manual trigger beside a scheduled one — would both see the same
+`scheduled` row and both send it. The unique index cannot help: the row
+already exists, and neither run is inserting.
+
+Add `reminders.claimed_at timestamptz null` and take the row with a
+conditional update, in one statement:
+
+```sql
+update public.reminders
+   set claimed_at = now()
+ where id = $1
+   and status in ('scheduled', 'failed')
+   and (claimed_at is null or claimed_at < now() - interval '15 minutes')
+returning id;
+```
+
+No row back means another run holds it — skip, say nothing, carry on. The
+`claimed_at` test is also the lease: a run that dies mid-send leaves a claim
+that expires, so the row is recoverable rather than stuck for ever. Fifteen
+minutes is far longer than any send and far shorter than the gap between
+runs.
+
+**Not a run-level advisory lock**, which is the obvious alternative and does
+not work here. A scheduler run is many supabase-js calls, and PostgREST gives
+each one its own transaction on a pooled connection — so
+`pg_try_advisory_xact_lock` releases at the end of the first call, and a
+session-scoped lock ends up held by whichever pooled connection happens to
+serve the next request. A per-row claim needs no session affinity, and it lets
+runs overlap safely instead of merely preventing them.
+
+Reclaiming an expired lease inherits the ambiguity from §6's thrown-send case:
+the previous attempt may have reached the provider. That is the same trade as
+any retry here — cap it, and prefer a visibly stuck reminder to a customer
+receiving the same chase twice.
 
 The uncertain case carries through from `sendReminder`: a send that **threw**
 is recorded as failed but worded as unknown, because a timeout can land after
@@ -293,8 +357,6 @@ and watched.
 - **Weekend and holiday handling.** `send_window_days` covers weekends. Indian
   public holidays are not modelled at all, and a firm reminder landing on
   Diwali is a bad look.
-- **Per-invoice "don't chase".** §3 rejects the sentinel date but does not
-  choose the replacement.
 - **Voice.** `allowed_channels` permits `voice` on s5 and s6 and nothing can
   place a call. Steps configured for voice must be skipped with a recorded
   reason, not silently treated as email.
