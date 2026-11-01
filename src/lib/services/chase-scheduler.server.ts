@@ -183,16 +183,16 @@ export async function loadReminders(
 
 type UnlinkedEvent = { event: string; occurred_at: string | null; to_email: string | null };
 
-/** Events no send claimed, to the addresses of failed sends, since the earliest of them. */
+/** Events no send claimed, to the addresses of failed sends, inside their match windows. */
 async function unlinkedEventsNear(
   supabase: Admin,
   failed: readonly { to_email: string; created_at: string }[],
 ): Promise<UnlinkedEvent[]> {
   if (failed.length === 0) return [];
-  const since = failed.reduce(
-    (min, s) => (s.created_at < min ? s.created_at : min),
-    failed[0]?.created_at ?? "",
-  );
+  const times = failed.map((s) => Date.parse(s.created_at));
+  const since = new Date(Math.min(...times)).toISOString();
+  // `matchUnlinked` drops anything later than this anyway.
+  const until = new Date(Math.max(...times) + UNKNOWN_OUTCOME_MATCH_MINUTES * 60_000).toISOString();
   const addresses = [...new Set(failed.flatMap((s) => [s.to_email, s.to_email.toLowerCase()]))];
 
   // Paged as well as chunked: a missed delivery event here reads as a send to
@@ -207,6 +207,7 @@ async function unlinkedEventsNear(
           .select("event, occurred_at, to_email")
           .is("send_id", null)
           .gte("occurred_at", since)
+          .lte("occurred_at", until)
           .in("to_email", chunk)
           .order("id")
           .range(from, to),
@@ -454,9 +455,10 @@ async function apply(
         .from("reminders")
         .update({ status: action.status, scheduled_for: today })
         .eq("id", action.reminderId)
-        // Never reopens a reminder the user cancelled after the plan read it.
-        // `sent` stays eligible: a soft-bounced send is retried from there.
-        .in("status", ["scheduled", "failed", "sent"]);
+        // Only from the status the plan read. A reminder a send settled or the
+        // user cancelled since then no longer matches, and tomorrow's plan
+        // looks again. A soft-bounced `sent` reminder is reopened this way too.
+        .eq("status", action.from);
       if (error) throw new Error(`Re-queuing a retry failed: ${error.message}`);
       result.retried += 1;
       return;
@@ -545,6 +547,12 @@ export async function sendChases(
   now: Date = new Date(),
   scope: RunScope = {},
 ): Promise<SendResult> {
+  // `now` moved on by the time spent so far, loads included. Claims are
+  // stamped with it, not with the run's start: a row reached twenty minutes
+  // in must not get a lease that has already expired.
+  const startedAt = Date.now();
+  const clock = () => new Date(now.getTime() + (Date.now() - startedAt));
+
   const supabase = getAdminSupabase();
   const today = schedulerToday(now);
   const result: SendResult = {
@@ -608,27 +616,44 @@ export async function sendChases(
         break;
       }
 
-      if (!(await claim(supabase, row.id, now))) continue;
+      const claimedAt = await claim(supabase, row.id, clock());
+      if (!claimedAt) continue;
 
       // Everything above read a snapshot taken before the loop. Now that the
-      // row is ours, read it and its account again: a run that overlapped
-      // this one may have sent to some recipients and settled it, and the
-      // user may have paused the account or marked a contact do-not-contact.
-      const [current, freshAccount] = await Promise.all([
+      // row is ours, read it, its account and its invoice again: a run that
+      // overlapped this one may have sent to some recipients and settled it,
+      // the user may have cancelled it, paused the account, closed its window
+      // or marked a contact do-not-contact, and a payment may have landed.
+      const caller = systemCaller(supabase, row.org_id);
+      const accountId = entry.invoice.accountId;
+      const [current, accounts] = await Promise.all([
         loadReminders(supabase, { invoiceIds: [row.invoice_id] }).then((rows) =>
           rows.find((r) => r.row.id === row.id),
         ),
-        loadAccounts(systemCaller(supabase, row.org_id), today, {
-          accountId: entry.invoice.accountId,
-        }).then((accounts) => accounts.get(entry.invoice.accountId)),
+        loadAccounts(caller, today, { accountId }),
       ]);
+      const freshAccount = accounts.get(accountId);
+      if (!current || !freshAccount || !SENDABLE.includes(current.row.status)) {
+        await release(supabase, row.id, claimedAt);
+        result.waiting += 1;
+        continue;
+      }
+      const { entries } = await loadBook(caller, today, accounts, {
+        accountId,
+        invoiceId: row.invoice_id,
+      });
+      const invoice = entries[0]?.invoice;
+      if (!invoice) {
+        await settle(supabase, row.id, "cancelled", "The invoice is no longer open");
+        result.reminders.cancelled += 1;
+        continue;
+      }
       if (
-        !current ||
-        !freshAccount ||
-        holdReason(freshAccount.status, entry.invoice, today) !== null ||
+        holdReason(freshAccount.status, invoice, today) !== null ||
+        !isWindowOpen(windowOf(freshAccount), claimedAt) ||
         !dueToSend(sendTimes(current.row), today)
       ) {
-        await release(supabase, row.id, now);
+        await release(supabase, row.id, claimedAt);
         result.waiting += 1;
         continue;
       }
@@ -636,7 +661,7 @@ export async function sendChases(
       const targets = targetsFor(fresh, freshAccount);
       // A late soft bounce can add a recipient the check above never counted.
       if (targets.length > remaining) {
-        await release(supabase, row.id, now);
+        await release(supabase, row.id, claimedAt);
         result.stoppedForQuota = quotaMessage(remaining);
         break;
       }
@@ -656,10 +681,10 @@ export async function sendChases(
               orgName: orgs.get(row.org_id) ?? "",
               contactName: contact.name,
               accountName: freshAccount.row.name,
-              invoiceNumber: entry.invoice.invoiceNumber,
-              amount: paiseToMoney(entry.invoice.outstandingPaise),
-              dueDate: entry.invoice.dueDate,
-              daysOverdue: daysOverdue(entry.invoice, today),
+              invoiceNumber: invoice.invoiceNumber,
+              amount: paiseToMoney(invoice.outstandingPaise),
+              dueDate: invoice.dueDate,
+              daysOverdue: daysOverdue(invoice, today),
               tone: toCadenceTone(row.tone),
               language: contactLanguage(contact.language),
             },
@@ -733,19 +758,23 @@ async function release(supabase: Admin, reminderId: string, claimedAt: Date): Pr
   if (error) throw new Error(`Releasing reminder ${reminderId} failed: ${error.message}`);
 }
 
+/** The statuses a send may claim, and must still find after the claim. */
+const SENDABLE: readonly ReminderStatus[] = ["scheduled", "failed"];
+
 /**
- * Takes the row for this run (spec §6). False means another run holds it —
- * skip it and say nothing. An expired lease is fair game: its run died.
+ * Takes the row for this run (spec §6), stamped `at`, and returns the stamp
+ * for `release` to match. Null means another run holds it — skip it and say
+ * nothing. An expired lease is fair game: its run died.
  */
-async function claim(supabase: Admin, reminderId: string, now: Date): Promise<boolean> {
-  const expired = new Date(now.getTime() - CLAIM_LEASE_MINUTES * 60_000).toISOString();
+async function claim(supabase: Admin, reminderId: string, at: Date): Promise<Date | null> {
+  const expired = new Date(at.getTime() - CLAIM_LEASE_MINUTES * 60_000).toISOString();
   const { data, error } = await supabase
     .from("reminders")
-    .update({ claimed_at: now.toISOString() })
+    .update({ claimed_at: at.toISOString() })
     .eq("id", reminderId)
-    .in("status", ["scheduled", "failed"])
+    .in("status", SENDABLE)
     .or(`claimed_at.is.null,claimed_at.lt.${expired}`)
     .select("id");
   if (error) throw new Error(`Claiming reminder ${reminderId} failed: ${error.message}`);
-  return (data ?? []).length > 0;
+  return (data ?? []).length > 0 ? at : null;
 }

@@ -100,7 +100,11 @@ export async function ingestEmailActivity(now: Date = new Date()): Promise<Inges
     provider: PROVIDER,
     provider_message_id: event.email_id === "" ? null : event.email_id,
     event: event.event,
-    to_email: event.recipient && event.recipient !== "*" ? event.recipient : (event.to ?? null),
+    // Lowercased: the scheduler matches unlinked events to failed sends by
+    // address, and the provider's casing need not be the one we sent.
+    to_email:
+      (event.recipient && event.recipient !== "*" ? event.recipient : event.to)?.toLowerCase() ??
+      null,
     occurred_at: event.date,
     dedupe_key: dedupeKeyFor(PROVIDER, event),
     // Json by construction — it came back from `response.json()`. Zod's
@@ -211,6 +215,9 @@ async function raiseBounceAlerts(
       )
       .gte("received_at", since)
       .ilike("event", "%bounce%")
+      // Newest first: the first bounce raised for a contact supplies the
+      // alert's address and response, and that should be the latest one.
+      .order("received_at", { ascending: false })
       .order("id")
       .range(from, to),
   );

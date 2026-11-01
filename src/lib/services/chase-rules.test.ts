@@ -166,6 +166,16 @@ describe("recipientOutcome", () => {
     ).toBe("hard_bounced");
   });
 
+  // Callback time decides, not attempt order: a late delivery report on the
+  // first attempt outranks an earlier bounce on the second.
+  test("a delivery reported after a later attempt's hard bounce wins", () => {
+    const late = [{ outcome: "delivered" as const, occurredAt: "2026-11-02T03:05:00Z" }];
+    const early = [{ outcome: "hard_bounce" as const, occurredAt: "2026-11-01T03:05:00Z" }];
+    expect(recipientOutcome([attempt("sent", 0, late), attempt("sent", 10, early)]).outcome).toBe(
+      "delivered",
+    );
+  });
+
   test("a failed send with a matched delivery counts as delivered", () => {
     const matched = [{ outcome: "delivered" as const, occurredAt: "2026-11-02T03:02:00Z" }];
     expect(recipientOutcome([attempt("failed", 0, matched, "timed out")]).outcome).toBe(
@@ -231,14 +241,16 @@ describe("planInvoice — retries", () => {
   // Phase 1 before phase 2: s5 is due, but s4 never landed.
   test("an outstanding step is retried instead of advancing", () => {
     const actions = planInvoice(input(30, { reminders: [reminder(4, "failed", 2, failingP0)] }));
-    expect(actions).toEqual([{ type: "retry", reminderId: "r4", status: "failed" }]);
+    expect(actions).toEqual([
+      { type: "retry", reminderId: "r4", from: "failed", status: "failed" },
+    ]);
   });
 
   test("a sent step that soft-bounced inside the week is reopened", () => {
     const sent = reminder(4, "sent", 2, failingP0);
     expect(isOutstanding(sent, TODAY)).toBe(true);
     expect(planInvoice(input(16, { reminders: [sent] }))).toEqual([
-      { type: "retry", reminderId: "r4", status: "failed" },
+      { type: "retry", reminderId: "r4", from: "sent", status: "failed" },
     ]);
   });
 

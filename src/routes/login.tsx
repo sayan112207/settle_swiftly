@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 
 import { AuthForm } from "@/components/auth/AuthForm";
@@ -25,6 +26,7 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const { reason } = Route.useSearch();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const oauthMessage = reason ? OAUTH_REASONS[reason] : undefined;
 
   return (
@@ -40,6 +42,9 @@ function LoginPage() {
         const result = await signInWithPassword({ data: parsed.data });
         if (result.status === "error") return result.message;
 
+        // A session that expired never passed through sign-out, so the last
+        // user's data may still be cached in this tab.
+        queryClient.clear();
         // /app decides where they actually land — it bounces to /onboarding
         // when the account has no org yet.
         await navigate({ to: "/app" });

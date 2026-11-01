@@ -251,8 +251,8 @@ export type PlanAction =
       reason: string;
       failing: { contactId: string; reason: string }[];
     }
-  /** Put back in today's queue. */
-  | { type: "retry"; reminderId: string; status: "scheduled" | "failed" }
+  /** Put back in today's queue. `from` is the status the plan read, so a stale write misses. */
+  | { type: "retry"; reminderId: string; from: ReminderStatus; status: "scheduled" | "failed" }
   /** A new step, to `schedule_reminder()`. */
   | {
       type: "schedule";
@@ -335,6 +335,7 @@ export function planInvoice(input: PlanInput): PlanAction[] {
       actions.push({
         type: "retry",
         reminderId: outstanding.id,
+        from: outstanding.status,
         status: attempted ? "failed" : "scheduled",
       });
       return actions;

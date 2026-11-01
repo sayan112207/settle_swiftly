@@ -196,7 +196,9 @@ async function loadAlerts(caller: Caller): Promise<OutboxAlert[]> {
     accounts: { name: string } | null;
     contacts: { name: string } | null;
   };
-  const rows = data as unknown as Row[];
+  // One row per id: an alert raised between page reads pushes the row at a
+  // page boundary onto the next page too.
+  const rows = [...new Map((data as unknown as Row[]).map((a) => [a.id, a])).values()];
 
   // `invoice_id` carries no foreign key — the alert outlives a deleted
   // invoice — so PostgREST cannot embed it; the numbers are a second read.

@@ -153,8 +153,8 @@ type InvoiceRow = {
 export type BookEntry = { invoice: BookInvoice; issueDate: IsoDate; grossPaise: number };
 
 /**
- * The open book for the org (or one account), and each account's paid-invoice
- * lateness samples for `avg_days_late`.
+ * The open book for the org (or one account, or one invoice), and each
+ * account's paid-invoice lateness samples for `avg_days_late`.
  *
  * `includePaid` also loads `paid` invoices: needed for payment history, not for
  * exposure, so the dashboard skips it.
@@ -163,7 +163,7 @@ export async function loadBook(
   caller: Caller,
   today: IsoDate,
   accounts: Map<string, AccountState>,
-  options: { accountId?: string; includePaid?: boolean } = {},
+  options: { accountId?: string; invoiceId?: string; includePaid?: boolean } = {},
 ): Promise<{ entries: BookEntry[]; paidSamples: Map<string, PaidSample[]> }> {
   const { supabase, orgId, timezone } = caller;
   const statuses: InvoiceStatusValue[] = options.includePaid
@@ -182,6 +182,7 @@ export async function loadBook(
       .eq("currency", "INR")
       .in("status", statuses);
     if (options.accountId) query = query.eq("account_id", options.accountId);
+    if (options.invoiceId) query = query.eq("id", options.invoiceId);
     return query.order("id").range(from, to);
   })) as unknown as InvoiceRow[];
 
