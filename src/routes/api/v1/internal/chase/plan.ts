@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { handleApi, json, readJsonBody, validationError } from "@/lib/services/api.server";
+import { handleApi, json, readOptionalJsonBody, validationError } from "@/lib/services/api.server";
 import { planChases, runScopeSchema } from "@/lib/services/chase-scheduler.server";
 import { requireCronSecret } from "@/lib/services/internal-auth.server";
 
@@ -21,7 +21,7 @@ export const Route = createFileRoute("/api/v1/internal/chase/plan")({
           { code: "plan_failed", message: "Planning today's reminders failed." },
           async () => {
             await requireCronSecret(request);
-            const scope = runScopeSchema.safeParse((await readJsonBody(request)) ?? {});
+            const scope = runScopeSchema.safeParse(await readOptionalJsonBody(request));
             if (!scope.success) throw validationError(scope.error);
             const result = await planChases(new Date(), scope.data);
             return json(result, result.errors.length > 0 ? 500 : 200);

@@ -357,6 +357,18 @@ openssl rand -hex 32   # the secret
 
 Until both are stored, every run fails with `cron_not_configured` — on purpose.
 
+3. Check the two copies match. The poll is safe to call at any time; `401`
+   means the app holds a different secret from the one you just stored:
+
+   ```sh
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+     -H "Authorization: Bearer <the secret>" https://<app host>/api/v1/internal/email/poll
+   ```
+
+Generate a fresh secret for each environment. One used for local testing is
+not a production secret: it has sat in a shell, a `.env` file, and probably a
+terminal scrollback.
+
 To rotate, update both copies; the runs in between get a 401, and the next run
 after that catches up, because every job is safe to repeat.
 

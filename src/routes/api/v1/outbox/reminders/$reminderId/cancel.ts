@@ -15,7 +15,7 @@ export const Route = createFileRoute("/api/v1/outbox/reminders/$reminderId/cance
               throw new ApiError(
                 409,
                 "not_cancellable",
-                "That reminder has already been sent or cancelled.",
+                "That reminder is being sent right now, or has already been sent or cancelled.",
               );
             }
             return json({ cancelled: true });

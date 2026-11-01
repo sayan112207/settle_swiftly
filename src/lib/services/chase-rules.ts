@@ -176,9 +176,16 @@ export function recipientOutcome(attempts: readonly SendAttempt[]): {
 } {
   if (attempts.length === 0) return { outcome: "unsent", reason: null };
 
-  const events = attempts.flatMap((a) => a.events);
-  if (events.some((e) => e.outcome === "delivered")) return { outcome: "delivered", reason: null };
-  if (events.some((e) => e.outcome === "hard_bounce")) {
+  // Delivered and hard-bounced are both final, so whichever came last is the
+  // truth: an address that took the first attempt and bounced a later one
+  // no longer exists, and showing it as delivered would hide that.
+  const final = attempts
+    .flatMap((a) => a.events)
+    .filter((e) => e.outcome === "delivered" || e.outcome === "hard_bounce")
+    .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
+    .at(-1);
+  if (final?.outcome === "delivered") return { outcome: "delivered", reason: null };
+  if (final?.outcome === "hard_bounce") {
     return { outcome: "hard_bounced", reason: "The address doesn't exist" };
   }
 
@@ -403,17 +410,12 @@ export function needsSend(outcome: RecipientOutcome, contact: ContactReach | nul
 }
 
 /**
- * Whether the sender should take this reminder today. A failed reminder that
- * was already tried today waits for tomorrow's plan: retries are daily (spec
- * §9), and the sender runs hourly — without this, a refusal at 9:00 would be
- * retried ten more times before 19:00.
+ * Whether the sender should take this reminder today. One that was already
+ * tried today waits for tomorrow's plan, whatever its status says: retries
+ * are daily (spec §9) and the sender runs hourly. A reminder left `scheduled`
+ * by a run that died after sending is the case the status alone would miss.
  */
-export function dueToSend(
-  status: ReminderStatus,
-  attemptedAt: readonly string[],
-  today: IsoDate,
-): boolean {
-  if (status !== "failed") return true;
+export function dueToSend(attemptedAt: readonly string[], today: IsoDate): boolean {
   return !attemptedAt.some((at) => schedulerToday(new Date(at)) === today);
 }
 

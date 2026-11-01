@@ -181,7 +181,7 @@ function AttentionRow({ summary }: { summary: DashboardSummary }) {
   return (
     <section className="mt-8">
       <h2 className="mb-4 text-section font-bold tracking-tight text-fg">Needs your attention</h2>
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <MetricTile
           to="/app/accounts"
           search={{ filter: "missing_contacts" }}
@@ -206,8 +206,8 @@ function AttentionRow({ summary }: { summary: DashboardSummary }) {
           value={String(summary.attention.delivery_alerts_open)}
           subline={
             summary.attention.delivery_alerts_open === 1
-              ? "reminder not reaching anyone"
-              : "reminders not reaching anyone"
+              ? "delivery alert to review"
+              : "delivery alerts to review"
           }
         />
       </div>
@@ -239,7 +239,7 @@ function SummarySkeletons() {
       </section>
       <section className="mt-8">
         <h2 className="mb-4 text-section font-bold tracking-tight text-fg">Needs your attention</h2>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
           <TileSkeleton eyebrow={false} />
           <TileSkeleton eyebrow={false} />
           <TileSkeleton eyebrow={false} />

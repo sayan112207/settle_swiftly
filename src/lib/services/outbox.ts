@@ -1,5 +1,6 @@
 import { getPublicEnv } from "@/lib/env.public";
 import { outboxCancelSchema, outboxSchema, type Outbox } from "@/lib/schemas/outbox";
+import { outboxOverview } from "@/lib/services/chase-rules";
 import { requestJson } from "@/lib/services/dashboard";
 
 /**
@@ -12,6 +13,7 @@ export const outboxQueryKey = ["outbox"] as const;
 
 const MOCK_DELAY_MS = 400;
 
+/** Resolves after `ms`, so mock mode shows its loading states. */
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -20,7 +22,7 @@ function delay(ms: number): Promise<void> {
 export async function getOutbox(): Promise<Outbox> {
   if (getPublicEnv().useMocks) {
     await delay(MOCK_DELAY_MS);
-    return outboxSchema.parse(outboxFixture);
+    return outboxSchema.parse(mockOutbox());
   }
   const body = await requestJson("/outbox", {
     method: "GET",
@@ -33,6 +35,13 @@ export async function getOutbox(): Promise<Outbox> {
 export async function cancelOutboxReminder(reminderId: string): Promise<void> {
   if (getPublicEnv().useMocks) {
     await delay(MOCK_DELAY_MS);
+    updateMock((outbox) => {
+      const reminder = outbox.today_queue.find((r) => r.id === reminderId);
+      if (!reminder?.can_cancel) return;
+      reminder.status = "cancelled";
+      reminder.cancel_reason = "Cancelled from the Outbox";
+      reminder.can_cancel = false;
+    });
     return;
   }
   const body = await requestJson(`/outbox/reminders/${reminderId}/cancel`, {
@@ -46,12 +55,39 @@ export async function cancelOutboxReminder(reminderId: string): Promise<void> {
 export async function dismissOutboxAlert(alertId: string): Promise<void> {
   if (getPublicEnv().useMocks) {
     await delay(MOCK_DELAY_MS);
+    updateMock((outbox) => {
+      outbox.alerts = outbox.alerts.filter((a) => a.id !== alertId);
+    });
     return;
   }
   await requestJson(`/outbox/alerts/${alertId}/dismiss`, {
     method: "POST",
     headers: { Accept: "application/json" },
   });
+}
+
+/**
+ * Mock mode's live copy of the fixture. Cancel and dismiss change it, so the
+ * refetch after a mutation shows what the toast just said happened.
+ */
+let mockState: Outbox | null = null;
+
+/** A copy of the mock state, seeded from the fixture on first use. */
+function mockOutbox(): Outbox {
+  mockState ??= structuredClone(outboxFixture);
+  return structuredClone(mockState);
+}
+
+/** Applies a mock mutation and recounts the overview from the result. */
+function updateMock(change: (outbox: Outbox) => void): void {
+  const outbox = mockOutbox();
+  change(outbox);
+  outbox.overview = outboxOverview({
+    today: outbox.today,
+    reminders: [...outbox.today_queue, ...outbox.sent],
+    openAlerts: outbox.alerts.length,
+  });
+  mockState = outbox;
 }
 
 const ACCOUNT = "4f1c2a8e-0b6d-4e1a-9c3f-2d7b5e8a1c01";

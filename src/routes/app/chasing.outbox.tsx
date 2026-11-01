@@ -52,7 +52,14 @@ function userFacingMessage(error: unknown, fallback: string): string {
  */
 function OutboxPage() {
   const { view } = Route.useSearch();
-  const query = useQuery({ queryKey: outboxQueryKey, queryFn: getOutbox, retry: false });
+  // Refetched each minute: the 08:00 plan and the hourly sends change the
+  // queue under a page that was left open.
+  const query = useQuery({
+    queryKey: outboxQueryKey,
+    queryFn: getOutbox,
+    retry: false,
+    refetchInterval: 60_000,
+  });
   const outbox = query.data;
 
   const counts: Partial<Record<View, number>> = outbox
@@ -64,14 +71,15 @@ function OutboxPage() {
 
   return (
     <div className="space-y-5">
-      <div role="tablist" aria-label="Outbox sections" className="flex flex-wrap gap-2">
+      {/* Links, not tabs: each one changes the URL's `view`, and nothing here
+          implements the tab pattern's panels or arrow keys. */}
+      <nav aria-label="Outbox sections" className="flex flex-wrap gap-2">
         {VIEWS.map((v) => (
           <Link
             key={v}
             to="/app/chasing/outbox"
             search={{ view: v }}
-            role="tab"
-            aria-selected={view === v}
+            aria-current={view === v ? "page" : undefined}
             className={cn(
               "rounded-pill px-3 py-1.5 text-body font-semibold",
               view === v ? "bg-accent-tint text-accent-strong" : "text-fg-soft hover:text-fg",
@@ -81,7 +89,7 @@ function OutboxPage() {
             {counts[v] ? <span className="tnum ml-1.5">{counts[v]}</span> : null}
           </Link>
         ))}
-      </div>
+      </nav>
 
       {query.isPending ? (
         <OutboxSkeleton />
@@ -111,6 +119,7 @@ function OutboxPage() {
 // Overview
 // ---------------------------------------------------------------------------
 
+/** Overview: today's queue in a line, the week's sends and delivery rate, open alerts. */
 function OverviewView({ outbox }: { outbox: Outbox }) {
   const o = outbox.overview;
   const todayLine =
@@ -183,6 +192,7 @@ function OverviewView({ outbox }: { outbox: Outbox }) {
 // Today
 // ---------------------------------------------------------------------------
 
+/** Today: what the 8 o'clock plan queued, each cancellable until it sends. */
 function TodayView({ outbox }: { outbox: Outbox }) {
   const queryClient = useQueryClient();
   const cancel = useMutation({
@@ -230,6 +240,7 @@ function TodayView({ outbox }: { outbox: Outbox }) {
 // Sent
 // ---------------------------------------------------------------------------
 
+/** Sent: the week's reminders, per recipient, each linking to the account's activity. */
 function SentView({ outbox }: { outbox: Outbox }) {
   if (outbox.sent.length === 0) {
     return <Empty title="Nothing sent this week." body="Sent reminders appear here for 7 days." />;
@@ -261,6 +272,7 @@ const ALERT_TITLES: Record<OutboxAlert["kind"], string> = {
   undelivered: "Reminder not delivered after 7 days",
 };
 
+/** Needs attention: open alerts, each with Edit contact and Dismiss. */
 function AttentionView({ outbox }: { outbox: Outbox }) {
   const queryClient = useQueryClient();
   const dismiss = useMutation({
@@ -276,7 +288,10 @@ function AttentionView({ outbox }: { outbox: Outbox }) {
 
   if (outbox.alerts.length === 0) {
     return (
-      <Empty title="Nothing needs your attention." body="Every recent reminder reached someone." />
+      <Empty
+        title="Nothing needs your attention."
+        body="Addresses that bounce, and reminders still undelivered after 7 days, appear here."
+      />
     );
   }
 
@@ -348,6 +363,7 @@ const OUTCOME_CLASSES: Record<OutboxRecipientOutcome, string> = {
   retry: "bg-warn-tint text-warn",
 };
 
+/** One reminder: account, invoice, step, tone, status, and its recipients. */
 function ReminderCard({
   reminder: r,
   children,
@@ -384,6 +400,7 @@ function ReminderCard({
   );
 }
 
+/** One recipient's outcome, address, and the provider's reason when it failed. */
 function RecipientLine({ recipient: x }: { recipient: OutboxRecipient }) {
   return (
     <li className="flex flex-wrap items-center gap-2 text-prose">
@@ -404,6 +421,7 @@ function RecipientLine({ recipient: x }: { recipient: OutboxRecipient }) {
   );
 }
 
+/** The empty state for a sub-tab with nothing to list. */
 function Empty({ title, body }: { title: string; body: string }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-card border border-hairline bg-card p-14 text-center">
@@ -415,6 +433,7 @@ function Empty({ title, body }: { title: string; body: string }) {
   );
 }
 
+/** Placeholder cards while the outbox loads. */
 function OutboxSkeleton() {
   return (
     <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading outbox">

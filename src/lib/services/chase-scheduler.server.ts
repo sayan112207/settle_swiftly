@@ -195,16 +195,23 @@ async function unlinkedEventsNear(
   );
   const addresses = [...new Set(failed.flatMap((s) => [s.to_email, s.to_email.toLowerCase()]))];
 
+  // Paged as well as chunked: a missed delivery event here reads as a send to
+  // retry, and the customer gets the reminder twice.
   const events: UnlinkedEvent[] = [];
   for (let i = 0; i < addresses.length; i += IN_CHUNK) {
-    const { data, error } = await supabase
-      .from("email_callbacks")
-      .select("event, occurred_at, to_email")
-      .is("send_id", null)
-      .gte("occurred_at", since)
-      .in("to_email", addresses.slice(i, i + IN_CHUNK));
-    if (error) throw new Error(`Reading unlinked delivery events failed: ${error.message}`);
-    events.push(...(data ?? []));
+    const chunk = addresses.slice(i, i + IN_CHUNK);
+    events.push(
+      ...(await fetchAllPages((from, to) =>
+        supabase
+          .from("email_callbacks")
+          .select("event, occurred_at, to_email")
+          .is("send_id", null)
+          .gte("occurred_at", since)
+          .in("to_email", chunk)
+          .order("id")
+          .range(from, to),
+      )),
+    );
   }
   return events;
 }
@@ -226,14 +233,19 @@ function matchUnlinked(
 
 /** The org's stored cadence overrides, by account. */
 async function loadOverrides(supabase: Admin, orgId: string) {
-  const { data, error } = await supabase
-    .from("account_cadence_steps")
-    .select("account_id, step_key, tone, channel, recipients")
-    .eq("org_id", orgId);
-  if (error) throw new Error(`Reading cadence overrides failed: ${error.message}`);
+  // Six rows per custom account, so the row cap is reached at ~166 of them.
+  const rows = await fetchAllPages((from, to) =>
+    supabase
+      .from("account_cadence_steps")
+      .select("account_id, step_key, tone, channel, recipients")
+      .eq("org_id", orgId)
+      .order("account_id")
+      .order("step_key")
+      .range(from, to),
+  );
 
   const byAccount = new Map<string, Parameters<typeof mergeSteps>[0][number][]>();
-  for (const o of data ?? []) {
+  for (const o of rows) {
     const list = byAccount.get(o.account_id) ?? [];
     list.push({
       key: o.step_key,
@@ -258,9 +270,9 @@ function windowOf(account: AccountState) {
 
 /** Every org, with the name its reminders are sent under. */
 async function loadOrgs(supabase: Admin): Promise<{ id: string; name: string }[]> {
-  const { data, error } = await supabase.from("orgs").select("id, name").order("id");
-  if (error) throw new Error(`Reading orgs failed: ${error.message}`);
-  return data ?? [];
+  return fetchAllPages((from, to) =>
+    supabase.from("orgs").select("id, name").order("id").range(from, to),
+  );
 }
 
 /** Records a reminder's outcome, releases its claim, and logs a send. */
@@ -288,6 +300,9 @@ export type RunScope = { accountIds?: readonly string[] };
 /** The request body the internal endpoints accept: `{}` from cron, or a list of accounts. */
 export const runScopeSchema = z
   .object({ account_ids: z.array(z.string().uuid()).min(1).optional() })
+  // Strict: a misspelled `account_id` would otherwise be dropped, leaving an
+  // empty scope — and an empty scope is every account.
+  .strict()
   .transform((body): RunScope => (body.account_ids ? { accountIds: body.account_ids } : {}));
 
 /** Whether a run with this scope covers the account. */
@@ -415,8 +430,10 @@ async function apply(
       return;
 
     case "give_up": {
-      await settle(supabase, action.reminderId, action.status, action.reason);
-      result.gaveUp += 1;
+      // Alerts first: once settled, the planner never looks at this reminder
+      // again, so an alert that failed to raise after it would be lost. Raised
+      // before, a failure leaves it outstanding and tomorrow's plan tries
+      // again — the open-alert index keeps the ones that did land from doubling.
       for (const failing of action.failing) {
         const { data, error } = await supabase.rpc("chase_alert_raise", {
           p_contact: failing.contactId,
@@ -427,6 +444,8 @@ async function apply(
         if (error) throw new Error(`Raising an alert failed: ${error.message}`);
         if (data) result.alertsRaised += 1;
       }
+      await settle(supabase, action.reminderId, action.status, action.reason);
+      result.gaveUp += 1;
       return;
     }
 
@@ -434,7 +453,10 @@ async function apply(
       const { error } = await supabase
         .from("reminders")
         .update({ status: action.status, scheduled_for: today })
-        .eq("id", action.reminderId);
+        .eq("id", action.reminderId)
+        // Never reopens a reminder the user cancelled after the plan read it.
+        // `sent` stays eligible: a soft-bounced send is retried from there.
+        .in("status", ["scheduled", "failed", "sent"]);
       if (error) throw new Error(`Re-queuing a retry failed: ${error.message}`);
       result.retried += 1;
       return;
@@ -477,14 +499,17 @@ async function cancelOrphans(
   book: Map<string, BookEntry>,
   result: PlanResult,
 ): Promise<void> {
-  const { data, error } = await supabase
-    .from("reminders")
-    .select("id, invoice_id")
-    .eq("org_id", orgId)
-    .in("status", ["scheduled", "failed"]);
-  if (error) throw new Error(`Reading open reminders failed: ${error.message}`);
+  const rows = await fetchAllPages((from, to) =>
+    supabase
+      .from("reminders")
+      .select("id, invoice_id")
+      .eq("org_id", orgId)
+      .in("status", ["scheduled", "failed"])
+      .order("id")
+      .range(from, to),
+  );
 
-  for (const row of data ?? []) {
+  for (const row of rows) {
     if (book.has(row.invoice_id)) continue;
     await settle(supabase, row.id, "cancelled", "The invoice is no longer open");
     result.cancelled += 1;
@@ -573,52 +598,49 @@ export async function sendChases(
         continue;
       }
 
-      if (
-        !dueToSend(
-          row.status,
-          row.email_sends.map((send) => send.created_at),
-          today,
-        )
-      ) {
+      if (!dueToSend(sendTimes(row), today)) {
         result.waiting += 1;
         continue;
       }
 
-      const contacts = new Map(account.contacts.map((c) => [c.id, c]));
-      const targetsOf = (current: ReminderFacts) =>
-        current.recipients.filter((r) => {
-          const c = contacts.get(r.contactId);
-          return needsSend(
-            r.outcome,
-            c
-              ? {
-                  isActive: c.is_active,
-                  doNotContact: c.do_not_contact,
-                  email: c.email,
-                  channelEmail: c.channel_email,
-                }
-              : null,
-          );
-        });
-
-      if (targetsOf(facts).length > remaining) {
-        result.stoppedForQuota =
-          `Stopped with ${Math.max(remaining, 0)} emails left this cycle (keeping ` +
-          `${QUOTA_RESERVE} for sign-up mail); the rest of today's queue waits.`;
+      if (targetsFor(facts, account).length > remaining) {
+        result.stoppedForQuota = quotaMessage(remaining);
         break;
       }
 
       if (!(await claim(supabase, row.id, now))) continue;
 
-      // Recipients are chosen again now that the row is ours. The queue was
-      // read before the loop, and a run that overlapped this one may have
-      // settled the reminder `failed` since — having reached some of the
-      // people on it, who must not hear it twice.
-      const fresh =
-        (await loadReminders(supabase, { invoiceIds: [row.invoice_id] })).find(
-          (r) => r.row.id === row.id,
-        )?.facts ?? facts;
-      const targets = targetsOf(fresh);
+      // Everything above read a snapshot taken before the loop. Now that the
+      // row is ours, read it and its account again: a run that overlapped
+      // this one may have sent to some recipients and settled it, and the
+      // user may have paused the account or marked a contact do-not-contact.
+      const [current, freshAccount] = await Promise.all([
+        loadReminders(supabase, { invoiceIds: [row.invoice_id] }).then((rows) =>
+          rows.find((r) => r.row.id === row.id),
+        ),
+        loadAccounts(systemCaller(supabase, row.org_id), today, {
+          accountId: entry.invoice.accountId,
+        }).then((accounts) => accounts.get(entry.invoice.accountId)),
+      ]);
+      if (
+        !current ||
+        !freshAccount ||
+        holdReason(freshAccount.status, entry.invoice, today) !== null ||
+        !dueToSend(sendTimes(current.row), today)
+      ) {
+        await release(supabase, row.id, now);
+        result.waiting += 1;
+        continue;
+      }
+      const fresh = current.facts;
+      const targets = targetsFor(fresh, freshAccount);
+      // A late soft bounce can add a recipient the check above never counted.
+      if (targets.length > remaining) {
+        await release(supabase, row.id, now);
+        result.stoppedForQuota = quotaMessage(remaining);
+        break;
+      }
+      const contacts = new Map(freshAccount.contacts.map((c) => [c.id, c]));
 
       const sends: { ok: boolean }[] = [];
       for (const target of targets) {
@@ -633,7 +655,7 @@ export async function sendChases(
             context: {
               orgName: orgs.get(row.org_id) ?? "",
               contactName: contact.name,
-              accountName: account.row.name,
+              accountName: freshAccount.row.name,
               invoiceNumber: entry.invoice.invoiceNumber,
               amount: paiseToMoney(entry.invoice.outstandingPaise),
               dueDate: entry.invoice.dueDate,
@@ -667,6 +689,48 @@ export async function sendChases(
     }
   }
   return result;
+}
+
+/** When each attempt at this reminder was recorded. */
+function sendTimes(row: ReminderRow): string[] {
+  return row.email_sends.map((send) => send.created_at);
+}
+
+/** The reminder's recipients who still need it and can still be emailed. */
+function targetsFor(facts: ReminderFacts, account: AccountState) {
+  const contacts = new Map(account.contacts.map((c) => [c.id, c]));
+  return facts.recipients.filter((r) => {
+    const c = contacts.get(r.contactId);
+    return needsSend(
+      r.outcome,
+      c
+        ? {
+            isActive: c.is_active,
+            doNotContact: c.do_not_contact,
+            email: c.email,
+            channelEmail: c.channel_email,
+          }
+        : null,
+    );
+  });
+}
+
+/** Why the run stopped short of its queue. */
+function quotaMessage(remaining: number): string {
+  return (
+    `Stopped with ${Math.max(remaining, 0)} emails left this cycle (keeping ` +
+    `${QUOTA_RESERVE} for sign-up mail); the rest of today's queue waits.`
+  );
+}
+
+/** Gives back a claim this run took and then decided not to use. */
+async function release(supabase: Admin, reminderId: string, claimedAt: Date): Promise<void> {
+  const { error } = await supabase
+    .from("reminders")
+    .update({ claimed_at: null })
+    .eq("id", reminderId)
+    .eq("claimed_at", claimedAt.toISOString());
+  if (error) throw new Error(`Releasing reminder ${reminderId} failed: ${error.message}`);
 }
 
 /**

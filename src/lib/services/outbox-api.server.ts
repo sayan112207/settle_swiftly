@@ -9,7 +9,7 @@
 
 import { z } from "zod";
 
-import { ApiError, resolveCaller, type Caller } from "@/lib/services/api.server";
+import { ApiError, fetchAllPages, resolveCaller, type Caller } from "@/lib/services/api.server";
 import {
   CLAIM_LEASE_MINUTES,
   outboxOverview,
@@ -168,16 +168,21 @@ function shapeReminder(
 
 /** The org's open alerts, newest first. */
 async function loadAlerts(caller: Caller): Promise<OutboxAlert[]> {
-  const { data, error } = await caller.supabase
-    .from("chase_alerts")
-    .select(
-      "id, kind, account_id, contact_id, invoice_id, to_email, reason, created_at, " +
-        "accounts(name), contacts(name)",
-    )
-    .eq("org_id", caller.orgId)
-    .is("resolved_at", null)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
+  // Paged: past the row cap the list and its count would silently stop short
+  // of the dashboard's, which counts with `head` and has no cap.
+  const data = await fetchAllPages((from, to) =>
+    caller.supabase
+      .from("chase_alerts")
+      .select(
+        "id, kind, account_id, contact_id, invoice_id, to_email, reason, created_at, " +
+          "accounts(name), contacts(name)",
+      )
+      .eq("org_id", caller.orgId)
+      .is("resolved_at", null)
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to),
+  );
 
   type Row = {
     id: string;
@@ -191,7 +196,7 @@ async function loadAlerts(caller: Caller): Promise<OutboxAlert[]> {
     accounts: { name: string } | null;
     contacts: { name: string } | null;
   };
-  const rows = (data ?? []) as unknown as Row[];
+  const rows = data as unknown as Row[];
 
   // `invoice_id` carries no foreign key — the alert outlives a deleted
   // invoice — so PostgREST cannot embed it; the numbers are a second read.

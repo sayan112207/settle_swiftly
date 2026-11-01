@@ -132,6 +132,21 @@ export async function readJsonBody(request: Request): Promise<unknown> {
   return request.json().catch(() => undefined);
 }
 
+/**
+ * A body that may be left out: empty reads as `{}`, anything else must be
+ * JSON. For endpoints where an absent body means "everything" — there a
+ * malformed one must fail rather than quietly widen to the same meaning.
+ */
+export async function readOptionalJsonBody(request: Request): Promise<unknown> {
+  const text = await request.text();
+  if (text.trim() === "") return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ApiError(422, "validation_error", "The request body isn't valid JSON.");
+  }
+}
+
 /** A 422 carrying the first validation issue. The schemas' messages are user-facing copy. */
 export function validationError(error: ZodError): ApiError {
   return new ApiError(

@@ -158,6 +158,14 @@ describe("recipientOutcome", () => {
 
   // The unknown-outcome case: the send threw, but a matching delivery event
   // turned up. Retrying would chase the customer twice.
+  test("a hard bounce after an earlier delivery is the outcome that stands", () => {
+    const delivered = [{ outcome: "delivered" as const, occurredAt: "2026-11-01T03:05:00Z" }];
+    const bounced = [{ outcome: "hard_bounce" as const, occurredAt: "2026-11-02T03:05:00Z" }];
+    expect(
+      recipientOutcome([attempt("sent", 0, delivered), attempt("sent", 10, bounced)]).outcome,
+    ).toBe("hard_bounced");
+  });
+
   test("a failed send with a matched delivery counts as delivered", () => {
     const matched = [{ outcome: "delivered" as const, occurredAt: "2026-11-02T03:02:00Z" }];
     expect(recipientOutcome([attempt("failed", 0, matched, "timed out")]).outcome).toBe(
@@ -297,11 +305,11 @@ describe("sending", () => {
   });
 
   // 03:30Z is 09:00 IST on TODAY; 20:00Z the day before is 01:30 IST TODAY.
-  test("a failed reminder already tried today waits for tomorrow", () => {
-    expect(dueToSend("failed", ["2026-11-02T03:30:00Z"], TODAY)).toBe(false);
-    expect(dueToSend("failed", ["2026-11-01T20:00:00Z"], TODAY)).toBe(false);
-    expect(dueToSend("failed", ["2026-10-31T03:30:00Z"], TODAY)).toBe(true);
-    expect(dueToSend("scheduled", ["2026-11-02T03:30:00Z"], TODAY)).toBe(true);
+  test("a reminder already tried today waits for tomorrow", () => {
+    expect(dueToSend(["2026-11-02T03:30:00Z"], TODAY)).toBe(false);
+    expect(dueToSend(["2026-11-01T20:00:00Z"], TODAY)).toBe(false);
+    expect(dueToSend(["2026-10-31T03:30:00Z"], TODAY)).toBe(true);
+    expect(dueToSend([], TODAY)).toBe(true);
   });
 
   test("any failed send leaves the reminder failed", () => {

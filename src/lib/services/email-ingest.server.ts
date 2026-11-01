@@ -14,6 +14,7 @@
 
 import { getAdminSupabase } from "@/lib/supabase/admin-client.server";
 import type { Json } from "@/lib/supabase/types.gen";
+import { fetchAllPages } from "@/lib/services/api.server";
 import {
   classifyEvent,
   dedupeKeyFor,
@@ -123,10 +124,11 @@ export async function ingestEmailActivity(now: Date = new Date()): Promise<Inges
   if (linkError) throw new Error(`Linking delivery events failed: ${linkError.message}`);
 
   // ---- alert -------------------------------------------------------------
-  // Before judging, and only for events new to this run: a hard bounce is
-  // news the user gets the same day (spec §9), and an event stored by an
-  // earlier run has already been told.
-  const alertsRaised = await raiseBounceAlerts(supabase, insertedIds);
+  // Before judging: a hard bounce is news the user gets the same day (spec
+  // §9). Read from the table, not from this run's inserts, so an event that
+  // linked to its send only now, or whose alert failed to raise last run,
+  // still gets one.
+  const alertsRaised = await raiseBounceAlerts(supabase, new Date());
 
   // ---- judge -------------------------------------------------------------
   const contactsUpdated = await applyVerdicts(supabase);
@@ -184,48 +186,87 @@ async function windowStart(
 /** `.in()` travels in the URL; keep each list well under any proxy's limit. */
 const IN_CHUNK = 100;
 
+/** How far back each run looks for hard bounces still owed an alert. */
+const BOUNCE_ALERT_LOOKBACK_HOURS = 24;
+
 /**
- * Raises an `address_bounced` alert for each new hard bounce on a reminder.
+ * Raises an `address_bounced` alert for each linked hard bounce received in
+ * the lookback window that no alert has answered yet.
  *
- * The address does not exist, so nothing will be retried — the only useful
- * thing left is to tell someone who can fix it. One alert per contact: the
- * database ignores a second while the first is open.
+ * "Answered" means the contact has an alert of this kind created after the
+ * event arrived — open, dismissed or resolved alike, so a dismissal or a
+ * fixed address is never undone by the next run. Unlinked events are
+ * skipped: with no send there is no contact to alert about.
  */
 async function raiseBounceAlerts(
   supabase: ReturnType<typeof getAdminSupabase>,
-  callbackIds: readonly string[],
+  now: Date,
 ): Promise<number> {
-  let raised = 0;
-  for (let i = 0; i < callbackIds.length; i += IN_CHUNK) {
-    const { data, error } = await supabase
+  const since = new Date(now.getTime() - BOUNCE_ALERT_LOOKBACK_HOURS * 3_600_000).toISOString();
+  const rows = await fetchAllPages((from, to) =>
+    supabase
       .from("email_callbacks")
-      .select("event, payload, email_sends!inner(contact_id, reminder_id, to_email)")
-      .in("id", callbackIds.slice(i, i + IN_CHUNK));
-    if (error) throw new Error(`Reading new bounces failed: ${error.message}`);
+      .select(
+        "id, event, payload, received_at, email_sends!inner(contact_id, reminder_id, to_email)",
+      )
+      .gte("received_at", since)
+      .ilike("event", "%bounce%")
+      .order("id")
+      .range(from, to),
+  );
 
-    for (const row of data ?? []) {
-      if (classifyEvent(row.event) !== "hard_bounce") continue;
-      const send = row.email_sends as unknown as {
-        contact_id: string | null;
-        reminder_id: string | null;
-        to_email: string;
-      };
-      if (!send.contact_id) continue;
+  type Send = { contact_id: string | null; reminder_id: string | null; to_email: string };
+  const bounces = rows.flatMap((row) => {
+    const send = row.email_sends as unknown as Send;
+    return classifyEvent(row.event) === "hard_bounce" && send.contact_id
+      ? [{ ...row, send: { ...send, contact_id: send.contact_id } }]
+      : [];
+  });
+  if (bounces.length === 0) return 0;
 
-      const smtp = (row.payload as { smtp_response?: unknown } | null)?.smtp_response;
-      const { data: isNew, error: raiseError } = await supabase.rpc("chase_alert_raise", {
-        p_contact: send.contact_id,
-        p_kind: "address_bounced",
-        p_reason:
-          typeof smtp === "string" && smtp.trim() !== ""
-            ? `The mail server says this address doesn't exist: ${smtp.trim()}`
-            : "The mail server says this address doesn't exist",
-        p_to_email: send.to_email,
-        ...(send.reminder_id ? { p_reminder: send.reminder_id } : {}),
-      });
-      if (raiseError) throw new Error(`Raising a bounce alert failed: ${raiseError.message}`);
-      if (isNew) raised += 1;
+  // The latest alert of this kind per contact, whatever became of it.
+  const contactIds = [...new Set(bounces.map((b) => b.send.contact_id))];
+  const answeredAt = new Map<string, string>();
+  for (let i = 0; i < contactIds.length; i += IN_CHUNK) {
+    // Paged: a dropped row reads as an unanswered bounce, and would raise
+    // again an alert the user already dismissed.
+    const chunk = contactIds.slice(i, i + IN_CHUNK);
+    const alerts = await fetchAllPages((from, to) =>
+      supabase
+        .from("chase_alerts")
+        .select("contact_id, created_at")
+        .eq("kind", "address_bounced")
+        .in("contact_id", chunk)
+        .order("id")
+        .range(from, to),
+    );
+    for (const alert of alerts) {
+      if (!alert.contact_id) continue;
+      const prior = answeredAt.get(alert.contact_id);
+      if (!prior || alert.created_at > prior) answeredAt.set(alert.contact_id, alert.created_at);
     }
+  }
+
+  let raised = 0;
+  for (const bounce of bounces) {
+    const answered = answeredAt.get(bounce.send.contact_id);
+    if (answered && Date.parse(answered) >= Date.parse(bounce.received_at)) continue;
+
+    const smtp = (bounce.payload as { smtp_response?: unknown } | null)?.smtp_response;
+    const { data: isNew, error: raiseError } = await supabase.rpc("chase_alert_raise", {
+      p_contact: bounce.send.contact_id,
+      p_kind: "address_bounced",
+      p_reason:
+        typeof smtp === "string" && smtp.trim() !== ""
+          ? `The mail server says this address doesn't exist: ${smtp.trim()}`
+          : "The mail server says this address doesn't exist",
+      p_to_email: bounce.send.to_email,
+      ...(bounce.send.reminder_id ? { p_reminder: bounce.send.reminder_id } : {}),
+    });
+    if (raiseError) throw new Error(`Raising a bounce alert failed: ${raiseError.message}`);
+    if (isNew) raised += 1;
+    // One alert answers every bounce for this contact in the window.
+    answeredAt.set(bounce.send.contact_id, now.toISOString());
   }
   return raised;
 }
