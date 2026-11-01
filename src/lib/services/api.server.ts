@@ -187,6 +187,8 @@ const RPC_ERRORS: Record<string, { status: number; message: string }> = {
   not_archived: { status: 409, message: "This account isn't archived." },
   not_found: { status: 404, message: "We couldn't find that account." },
   contact_not_found: { status: 404, message: "We couldn't find that contact." },
+  reminder_not_found: { status: 404, message: "We couldn't find that reminder." },
+  alert_not_found: { status: 404, message: "We couldn't find that alert." },
 };
 
 /** Maps a PostgREST/RPC error to an `ApiError`, or null when it is not one we expect. */

@@ -37,6 +37,17 @@ export function getServiceRoleKey(): string {
 }
 
 /**
+ * The bearer token Supabase Cron presents to `/api/v1/internal/*`.
+ *
+ * The database's copy lives in Vault as `cron_secret`; this is the app's copy
+ * of the same value. The two must match, so rotation updates both — see
+ * README → Scheduled jobs.
+ */
+export function getCronSecret(): string {
+  return requireServerEnv("CRON_SECRET");
+}
+
+/**
  * SMTP2GO, which sends the chase reminders. Travels as the
  * `X-Smtp2go-Api-Key` header — never as the `api_key` body field the API also
  * accepts, because a body is what gets logged when a request is traced.

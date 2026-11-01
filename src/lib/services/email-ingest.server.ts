@@ -44,6 +44,7 @@ export type IngestResult = {
   inserted: number;
   linked: number;
   contactsUpdated: number;
+  alertsRaised: number;
   swept: number;
 };
 
@@ -107,19 +108,25 @@ export async function ingestEmailActivity(now: Date = new Date()): Promise<Inges
     payload: event as unknown as Json,
   }));
 
-  let inserted = 0;
+  let insertedIds: string[] = [];
   if (rows.length > 0) {
     const { data, error } = await supabase
       .from("email_callbacks")
       .upsert(rows, { onConflict: "provider,dedupe_key", ignoreDuplicates: true })
       .select("id");
     if (error) throw new Error(`Storing delivery events failed: ${error.message}`);
-    inserted = data?.length ?? 0;
+    insertedIds = (data ?? []).map((row) => row.id);
   }
 
   // ---- link --------------------------------------------------------------
   const { data: linked, error: linkError } = await supabase.rpc("email_callbacks_link");
   if (linkError) throw new Error(`Linking delivery events failed: ${linkError.message}`);
+
+  // ---- alert -------------------------------------------------------------
+  // Before judging, and only for events new to this run: a hard bounce is
+  // news the user gets the same day (spec §9), and an event stored by an
+  // earlier run has already been told.
+  const alertsRaised = await raiseBounceAlerts(supabase, insertedIds);
 
   // ---- judge -------------------------------------------------------------
   const contactsUpdated = await applyVerdicts(supabase);
@@ -133,9 +140,10 @@ export async function ingestEmailActivity(now: Date = new Date()): Promise<Inges
 
   return {
     fetched: events.length,
-    inserted,
+    inserted: insertedIds.length,
     linked: linked ?? 0,
     contactsUpdated,
+    alertsRaised,
     swept: swept ?? 0,
   };
 }
@@ -171,6 +179,55 @@ async function windowStart(
 
   const newest = data?.occurred_at ? new Date(data.occurred_at) : now;
   return new Date(newest.getTime() - OVERLAP_MINUTES * 60_000).toISOString();
+}
+
+/** `.in()` travels in the URL; keep each list well under any proxy's limit. */
+const IN_CHUNK = 100;
+
+/**
+ * Raises an `address_bounced` alert for each new hard bounce on a reminder.
+ *
+ * The address does not exist, so nothing will be retried — the only useful
+ * thing left is to tell someone who can fix it. One alert per contact: the
+ * database ignores a second while the first is open.
+ */
+async function raiseBounceAlerts(
+  supabase: ReturnType<typeof getAdminSupabase>,
+  callbackIds: readonly string[],
+): Promise<number> {
+  let raised = 0;
+  for (let i = 0; i < callbackIds.length; i += IN_CHUNK) {
+    const { data, error } = await supabase
+      .from("email_callbacks")
+      .select("event, payload, email_sends!inner(contact_id, reminder_id, to_email)")
+      .in("id", callbackIds.slice(i, i + IN_CHUNK));
+    if (error) throw new Error(`Reading new bounces failed: ${error.message}`);
+
+    for (const row of data ?? []) {
+      if (classifyEvent(row.event) !== "hard_bounce") continue;
+      const send = row.email_sends as unknown as {
+        contact_id: string | null;
+        reminder_id: string | null;
+        to_email: string;
+      };
+      if (!send.contact_id) continue;
+
+      const smtp = (row.payload as { smtp_response?: unknown } | null)?.smtp_response;
+      const { data: isNew, error: raiseError } = await supabase.rpc("chase_alert_raise", {
+        p_contact: send.contact_id,
+        p_kind: "address_bounced",
+        p_reason:
+          typeof smtp === "string" && smtp.trim() !== ""
+            ? `The mail server says this address doesn't exist: ${smtp.trim()}`
+            : "The mail server says this address doesn't exist",
+        p_to_email: send.to_email,
+        ...(send.reminder_id ? { p_reminder: send.reminder_id } : {}),
+      });
+      if (raiseError) throw new Error(`Raising a bounce alert failed: ${raiseError.message}`);
+      if (isNew) raised += 1;
+    }
+  }
+  return raised;
 }
 
 /**

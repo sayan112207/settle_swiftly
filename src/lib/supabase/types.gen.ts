@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.15"
   }
   public: {
     Tables: {
@@ -816,6 +816,90 @@ export type Database = {
         }
         Relationships: []
       }
+      chase_alerts: {
+        Row: {
+          account_id: string
+          contact_id: string | null
+          created_at: string
+          id: string
+          invoice_id: string | null
+          kind: string
+          org_id: string
+          reason: string
+          reminder_id: string | null
+          resolution: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          to_email: string | null
+        }
+        Insert: {
+          account_id: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_id?: string | null
+          kind: string
+          org_id: string
+          reason: string
+          reminder_id?: string | null
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          to_email?: string | null
+        }
+        Update: {
+          account_id?: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_id?: string | null
+          kind?: string
+          org_id?: string
+          reason?: string
+          reminder_id?: string | null
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          to_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chase_alerts_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "chase_alerts_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "v_account_balances"
+            referencedColumns: ["account_id", "org_id"]
+          },
+          {
+            foreignKeyName: "chase_alerts_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chase_alerts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chase_alerts_reminder_id_fkey"
+            columns: ["reminder_id"]
+            isOneToOne: false
+            referencedRelation: "reminders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chase_requests: {
         Row: {
           id: string
@@ -1418,7 +1502,9 @@ export type Database = {
       }
       reminders: {
         Row: {
+          cancel_reason: string | null
           channel: Database["public"]["Enums"]["contact_channel"]
+          claimed_at: string | null
           created_at: string
           id: string
           invoice_id: string
@@ -1430,7 +1516,9 @@ export type Database = {
           tone: Database["public"]["Enums"]["reminder_tone"]
         }
         Insert: {
+          cancel_reason?: string | null
           channel: Database["public"]["Enums"]["contact_channel"]
+          claimed_at?: string | null
           created_at?: string
           id?: string
           invoice_id: string
@@ -1442,7 +1530,9 @@ export type Database = {
           tone: Database["public"]["Enums"]["reminder_tone"]
         }
         Update: {
+          cancel_reason?: string | null
           channel?: Database["public"]["Enums"]["contact_channel"]
+          claimed_at?: string | null
           created_at?: string
           id?: string
           invoice_id?: string
@@ -1627,6 +1717,26 @@ export type Database = {
           was_created: boolean
         }[]
       }
+      chase_alert_dismiss: { Args: { p_alert: string }; Returns: undefined }
+      chase_alert_raise: {
+        Args: {
+          p_contact: string
+          p_kind: string
+          p_reason: string
+          p_reminder?: string
+          p_to_email?: string
+        }
+        Returns: boolean
+      }
+      chase_reminder_cancel: { Args: { p_reminder: string }; Returns: boolean }
+      chase_reminder_settle: {
+        Args: {
+          p_reason?: string
+          p_reminder: string
+          p_status: Database["public"]["Enums"]["reminder_status"]
+        }
+        Returns: undefined
+      }
       create_org: {
         Args: { p_name: string }
         Returns: {
@@ -1663,11 +1773,15 @@ export type Database = {
         Args: {
           p_channel: Database["public"]["Enums"]["contact_channel"]
           p_invoice_id: string
-          p_scheduled_for?: string
+          p_recipients: string
+          p_scheduled_for: string
+          p_step: number
           p_tone: Database["public"]["Enums"]["reminder_tone"]
         }
         Returns: {
+          cancel_reason: string | null
           channel: Database["public"]["Enums"]["contact_channel"]
+          claimed_at: string | null
           created_at: string
           id: string
           invoice_id: string

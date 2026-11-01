@@ -26,6 +26,7 @@ import type {
   PaymentActionKind,
   PaymentTone,
   SendWindow,
+  Weekday,
 } from "@/lib/schemas/accounts";
 import {
   addDays,
@@ -227,11 +228,39 @@ export const DEFAULT_CADENCE: readonly CadenceStep[] = [
 
 export const DEFAULT_CADENCE_SUMMARY = "6 steps, −3 days to +45, email and WhatsApp";
 
+/**
+ * Opens at 09:00 because that is when the scheduler sends (spec §8). A later
+ * default would put the 9 o'clock send outside the window Settings shows.
+ */
 export const DEFAULT_SEND_WINDOW: SendWindow = {
-  opens_at: "10:00",
+  opens_at: "09:00",
   closes_at: "18:00",
   days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
 };
+
+/** The stored send-window columns, in the shape the rules read. */
+export type SendWindowFacts = {
+  mode: string;
+  opens: string | null;
+  closes: string | null;
+  days: readonly string[] | null;
+};
+
+/**
+ * The window an account actually sends in: its own when it is set to custom
+ * and fully filled in, otherwise the default. Settings shows this and the
+ * scheduler obeys it, so the two cannot disagree about when mail goes out.
+ */
+export function resolveSendWindow(facts: SendWindowFacts): SendWindow {
+  if (facts.mode === "custom" && facts.opens !== null && facts.closes !== null && facts.days) {
+    return {
+      opens_at: facts.opens.slice(0, 5),
+      closes_at: facts.closes.slice(0, 5),
+      days: [...facts.days] as Weekday[],
+    };
+  }
+  return { ...DEFAULT_SEND_WINDOW, days: [...DEFAULT_SEND_WINDOW.days] };
+}
 
 function step(
   key: string,

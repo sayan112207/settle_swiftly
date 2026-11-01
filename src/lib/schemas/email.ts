@@ -57,6 +57,22 @@ export const sendResponseSchema = z.object({
 });
 
 /** `/email/send`'s HTTP 400 body: a malformed address never reaches a mail server. */
+/**
+ * `POST /stats/email_summary`, reduced to the one field the scheduler reads.
+ *
+ * Not yet captured from the live API, unlike the shapes above — spec §7 names
+ * the field, and passthrough keeps whatever else comes back. If the provider
+ * calls it something else, the parse fails and the sender stops rather than
+ * sending blind.
+ */
+export const emailSummaryResponseSchema = z.object({
+  data: z
+    .object({
+      cycle_remaining: z.number().int(),
+    })
+    .passthrough(),
+});
+
 export const apiErrorResponseSchema = z.object({
   data: z.object({
     error: z.string(),

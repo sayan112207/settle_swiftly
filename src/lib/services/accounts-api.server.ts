@@ -31,7 +31,6 @@ import type {
   PauseReason,
   PaymentSource,
   TdsSection,
-  Weekday,
 } from "@/lib/schemas/accounts";
 import {
   accountsListFilterSchema,
@@ -62,6 +61,7 @@ import {
   headerStatus,
   invoiceStatus,
   mergeSteps,
+  resolveSendWindow,
   paymentStatus,
   sortAccounts,
   stepOverridesProblem,
@@ -335,15 +335,6 @@ async function loadSettings(context: AccountContext): Promise<AccountChasingSett
     recipients: o.recipients as CadenceRecipients,
   }));
 
-  const customWindow =
-    row.send_window_opens !== null && row.send_window_closes !== null && row.send_window_days
-      ? {
-          opens_at: row.send_window_opens.slice(0, 5),
-          closes_at: row.send_window_closes.slice(0, 5),
-          days: row.send_window_days as Weekday[],
-        }
-      : null;
-
   return {
     chase_mode: row.chase_mode as AccountChasingSettings["chase_mode"],
     steps: row.chase_mode === "custom" ? mergeSteps(overrides) : defaultSteps(),
@@ -352,10 +343,12 @@ async function loadSettings(context: AccountContext): Promise<AccountChasingSett
     stop_reason: row.stop_reason as ChaseStopReason | null,
     stop_note: row.stop_note,
     send_window_mode: row.send_window_mode as "default" | "custom",
-    send_window:
-      row.send_window_mode === "custom" && customWindow
-        ? customWindow
-        : { ...DEFAULT_SEND_WINDOW, days: [...DEFAULT_SEND_WINDOW.days] },
+    send_window: resolveSendWindow({
+      mode: row.send_window_mode,
+      opens: row.send_window_opens,
+      closes: row.send_window_closes,
+      days: row.send_window_days,
+    }),
     default_send_window: { ...DEFAULT_SEND_WINDOW, days: [...DEFAULT_SEND_WINDOW.days] },
     terms_preset: row.terms_preset as AccountChasingSettings["terms_preset"],
     term_days: row.term_days,

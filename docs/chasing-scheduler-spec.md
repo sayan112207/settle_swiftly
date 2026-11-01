@@ -177,9 +177,9 @@ never received.
 
 **The watermark counts `cancelled`, not just `sent`.** Otherwise a step that
 exhausts its retries freezes the invoice for ever — phase 1 keeps selecting
-it, phase 2 never runs, and the ladder stops silently. When attempts reach the
-cap the row is marked `cancelled` with the reason recorded, and the ladder
-continues at the next step. One undeliverable message must not end the
+it, phase 2 never runs, and the ladder stops silently. When the retry week
+runs out (§9) the row is marked `cancelled` with the reason recorded, and the
+ladder continues at the next step. One undeliverable message must not end the
 relationship; if the address itself is the problem, the bounce path already
 moves `contacts.delivery_state` and the account-level gate takes over.
 
@@ -225,8 +225,10 @@ accident. Take its `Disputed` and `Promise pending` clauses; let step
 selection answer the timing.
 
 Then the send window: `send_window_mode`, `send_window_opens` / `_closes` /
-`_days`, in the org's timezone. Outside it, do nothing and leave the step
-unsent — it is still due on the next run inside the window.
+`_days`, in IST (§8). The planner checks the day — on a day outside the
+window nothing is planned, and the step is still due on the next window day.
+The sender checks the hour — a planned row waits until its account's window
+is open.
 
 **Reuse these functions. Do not restate any of them in SQL.** The same
 reasoning that keeps `resolveDeliveryVerdict` out of PL/pgSQL applies here.
@@ -259,7 +261,7 @@ That makes the unique index necessary but not sufficient. Row existence means
 | ----------- | ----------------------------------- | --------------------------- |
 | `scheduled` | row written, not yet sent           | claimable                   |
 | `sent`      | provider accepted it; `sent_at` set | done                        |
-| `failed`    | provider refused it                 | claimable, until the cap    |
+| `failed`    | a recipient's send did not land     | claimable, for a week (§9)  |
 | `cancelled` | abandoned, or out of retries        | never again; counts as done |
 
 Without this a send that failed after the insert would be indistinguishable
@@ -299,17 +301,14 @@ session-scoped lock ends up held by whichever pooled connection happens to
 serve the next request. A per-row claim needs no session affinity, and it lets
 runs overlap safely instead of merely preventing them.
 
-Reclaiming an expired lease inherits the ambiguity from §6's thrown-send case:
-the previous attempt may have reached the provider. That is the same trade as
-any retry here — cap it, and prefer a visibly stuck reminder to a customer
-receiving the same chase twice.
+Reclaiming an expired lease inherits the ambiguity from the thrown-send case
+below: the previous attempt may have reached the provider.
 
 The uncertain case carries through from `sendReminder`: a send that **threw**
 is recorded as failed but worded as unknown, because a timeout can land after
-the provider accepted. Retrying it may send a second copy. Cap retries low,
-prefer a visible stuck reminder over a customer receiving the same chase
-twice, and never let a retry advance the ladder — it re-attempts one step, it
-does not move to the next.
+the provider accepted. Retrying it blind may send a second copy, so §9 checks
+for a delivery event before retrying it. And a retry never advances the
+ladder — it re-attempts one step, it does not move to the next.
 
 ---
 
@@ -347,37 +346,136 @@ conversation.
 
 ---
 
-## 8. What the cron does
+## 8. The daily schedule
 
-Nothing but wake things up. See `docs/accounts-contract.md` for why the work
-stays in TypeScript.
+**Fixed to India time** (decided 1 Nov 2026). Planning runs at 08:00 IST and
+sending opens at 09:00 IST. This replaces an hourly, per-timezone design:
+every customer today is in India, and a schedule the user can state in one
+sentence — "we plan at 8 and send at 9" — is worth more than generality
+nobody needs yet. The first org outside IST reopens it (§11).
 
-| Job                    | Cadence      | Endpoint                           |
-| ---------------------- | ------------ | ---------------------------------- |
-| Ingest delivery events | every 15 min | `POST /api/v1/internal/email/poll` |
-| Send due reminders     | hourly       | `POST /api/v1/internal/chase/run`  |
+| Job                  | IST                | Cron (UTC)      | Endpoint                           | Ships |
+| -------------------- | ------------------ | --------------- | ---------------------------------- | ----- |
+| `email-poll`         | every 15 min       | `*/15 * * * *`  | `POST /api/v1/internal/email/poll` | on    |
+| `chase-plan`         | 08:00              | `30 2 * * *`    | `POST /api/v1/internal/chase/plan` | off   |
+| `chase-send`         | hourly 09:00–19:00 | `30 3-13 * * *` | `POST /api/v1/internal/chase/send` | off   |
+| `cron-history-prune` | 08:47              | `17 3 * * *`    | —                                  | on    |
 
-Hourly rather than daily because the send window is per-account and in the
-org's timezone — encoding office hours as a UTC cron expression is wrong for
-the first customer in a second timezone. Let each account's window decide and
-keep cron ignorant of time zones.
+**Plan at 8.** For every open invoice the planner applies §5's gates and §4's
+selection and writes what goes out today as `reminders` rows with
+`scheduled_for = today`: new steps through `schedule_reminder()`, retries (§9)
+by moving their `scheduled_for` to today. Nothing is sent. The hour between is
+the user's — the Outbox (§10) shows today's queue, and anything in it can be
+cancelled before it goes.
 
-Both endpoints are the first in this codebase without a session. They need a
-shared secret compared in constant time, held in `supabase_vault` and never in
-a migration.
+**Send from 9.** The sender takes today's `scheduled` and `failed` rows whose
+account's window is open, re-checks the gates (an account paused at 8:30 must
+not be mailed at 9), claims each row (§6), checks quota (§7), and sends.
 
-**Ship the send job disabled.** The ingest job is read-mostly and safe to
-enable immediately. A misconfigured cron that mails customers on a loop is the
-one failure here that cannot be rolled back, so the first run should be manual
-and watched.
+**The default send window moves to 09:00–18:00**, from 10:00. Otherwise the
+9 o'clock send falls outside the window the Settings tab shows the user, and
+§1's argument applies: a sentence on screen would be false. Custom windows are
+still honoured — which is why the sender runs hourly until 19:00 rather than
+once. A 9am-only sender would never reach an account whose window opens at 11,
+and 19:00 is the last hour a window closing at 20:00 (the latest Settings
+offers) is open.
+
+"Today" is the IST date everywhere: for which step is due, and for
+`schedule_reminder()`'s escalation arithmetic.
+
+Every endpoint is without a session. They take a shared secret compared in
+constant time, held in `supabase_vault` and never in a migration.
+
+**Ship the plan and send jobs disabled.** The ingest job is read-mostly and
+safe to enable immediately. A misconfigured cron that mails customers on a
+loop is the one failure here that cannot be rolled back, so the first run is
+manual and watched.
 
 ---
 
-## 9. Not settled
+## 9. Retries and alerts
+
+What happened to each recipient of a reminder is derived from `email_sends`
+and `email_callbacks` — never stored, for the reason §4 counts attempts:
+
+| Outcome      | Evidence                                             | Then                                |
+| ------------ | ---------------------------------------------------- | ----------------------------------- |
+| delivered    | a `delivered` event                                  | done                                |
+| accepted     | the provider took it, no event since                 | done — no news is not failure       |
+| hard bounced | a hard-bounce event                                  | done; never retried; alert that day |
+| retry        | refused, threw, or the latest event is a soft bounce | sent again at the next send         |
+| unsent       | no attempt yet                                       | sent at the next send               |
+
+**Per recipient, not per reminder.** When P0 got s5 and P1's mailbox was
+full, only P1 gets it again. Re-sending to P0 to reach P1 is the duplicate
+chase §6 exists to prevent.
+
+**Retry for a week.** A reminder with a recipient in `retry` stays
+outstanding — §4's phase 1 holds the ladder on it — and each morning the
+planner moves it to today. Seven days after the reminder was first planned the
+planner gives up: the row becomes `cancelled` with the provider's last reason,
+an `undelivered` alert is raised for each recipient still failing, and the
+ladder continues at the next step.
+
+A soft-bounced send was `sent` as far as our handoff goes, so the planner also
+reopens `sent` reminders from the last seven days whose recipients have since
+soft-bounced.
+
+**An unknown outcome is checked before it is retried.** A send that threw may
+have reached the provider (§6), and with no provider id its events cannot
+link to it. Before retrying, the planner looks for a `delivered` event to the
+same address within 15 minutes of the attempt and, if there is one, counts the
+recipient as delivered. That check is what makes a week of daily retries safe
+where §6 once asked for a low cap.
+
+**A hard bounce means the address does not exist.** It is not retried:
+mailing a dead address seven times spends quota and damages the reputation of
+the one sending address every customer shares. The ingester raises an
+`address_bounced` alert as it stores the event, so the user hears the same
+day. The alert links to the account's Contacts tab, and changing the
+contact's email, retiring it, or marking it do-not-contact resolves it.
+
+**A hold is not a failure.** If an account is paused or an invoice disputed
+while a reminder is outstanding, a reminder never attempted is cancelled
+quietly with the hold as its reason. One with failed attempts waits, and
+alerts only if its week runs out.
+
+Alerts live in `chase_alerts` — at most one open alert per contact per kind —
+and are written to the account's activity log in the same transaction. Fixing
+the contact resolves them; the user can also dismiss one.
+
+---
+
+## 10. The Outbox
+
+Chasing → Outbox, as sub-tabs. The overview comes first and the detail is one
+click away. Every action is a link to the screen that already does it: the
+Outbox edits nothing but today's queue.
+
+| Sub-tab            | Shows                                                                      | Actions                                  |
+| ------------------ | -------------------------------------------------------------------------- | ---------------------------------------- |
+| Overview (default) | today's queue in one line, the week's sends and delivery rate, open alerts | links into the other three               |
+| Today              | what the 8 o'clock plan queued: invoice, step, tone, recipients            | Cancel, until it sends                   |
+| Sent               | recent sends, per recipient: delivered, accepted, bounced                  | → account Activity                       |
+| Needs attention    | open alerts and their reasons                                              | Edit contact → account Contacts; Dismiss |
+
+The dashboard gains one count beside its existing attention items, linking to
+Needs attention. The account Activity tab records each send and each alert.
+
+---
+
+## 11. Not settled
 
 - **Weekend and holiday handling.** `send_window_days` covers weekends. Indian
   public holidays are not modelled at all, and a firm reminder landing on
   Diwali is a bad look.
-- **Voice.** `allowed_channels` permits `voice` on s5 and s6 and nothing can
-  place a call. Steps configured for voice must be skipped with a recorded
-  reason, not silently treated as email.
+- **Voice and WhatsApp.** `allowed_channels` permits `voice` on s5 and s6
+  and nothing can place a call or send a WhatsApp message. The planner never
+  selects a step whose channel has no email in it (`whatsapp`, `voice`), and
+  reports it as skipped with that reason — never silently treated as email.
+- **Orgs outside India.** §8 fixes the schedule to IST.
+- **Already-overdue imports (§3).** `chase_start_on` is not built yet. Until
+  it is, a first import starts each invoice at the step matching its age — a
+  45-day-old invoice gets a Firm s6 to the director on day one. The plan job
+  ships disabled and the first plan is reviewed in the Outbox before 9, which
+  is the guard until the import question exists.

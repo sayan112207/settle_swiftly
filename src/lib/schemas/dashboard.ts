@@ -79,6 +79,8 @@ export const dashboardSummarySchema = z.object({
     accounts_without_p0: z.number().int().nonnegative(),
     disputes_open: z.number().int().nonnegative(),
     promises_broken_this_week: z.number().int().nonnegative(),
+    /** Open Outbox alerts: addresses that bounced, reminders that never landed. */
+    delivery_alerts_open: z.number().int().nonnegative(),
   }),
 });
 
