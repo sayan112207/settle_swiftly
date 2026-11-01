@@ -421,9 +421,10 @@ before scheduling it:
    curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://<app host>/api/v1/internal/chase/send
    ```
 
-Both endpoints take an optional body, `{"account_ids": ["<uuid>", …]}`, which
-limits the run to those accounts — to try one customer end to end without
-mailing everyone else's. The cron jobs send `{}`, which covers every account.
+Both endpoints take an optional body, `{"account_ids": ["<uuid>", …]}` (up to
+100), which limits the run to those accounts — to try one customer end to end
+without mailing everyone else's. The cron jobs send `{}`, which covers every
+account.
 
 A first plan on imported invoices starts each one at the step matching its age,
 so an invoice 45 days overdue gets a Firm reminder to the director straight

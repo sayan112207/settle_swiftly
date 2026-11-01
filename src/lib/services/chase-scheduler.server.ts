@@ -117,10 +117,13 @@ type ReminderRow = {
 /** A reminder row with its derived facts. */
 export type LoadedReminder = { row: ReminderRow; facts: ReminderFacts };
 
-/** Which reminders to load: an invoice's history, today's queue, or an org's recent days. */
+/**
+ * Which reminders to load: an invoice's history, today's queue (for some orgs,
+ * in a scoped run), or an org's recent days.
+ */
 type ReminderScope =
   | { invoiceIds: readonly string[] }
-  | { queuedOn: IsoDate }
+  | { queuedOn: IsoDate; orgIds?: readonly string[] }
   | { orgId: string; scheduledFrom: IsoDate };
 
 /**
@@ -146,7 +149,9 @@ export async function loadReminders(
       "invoiceIds" in scope
         ? query.in("invoice_id", [...scope.invoiceIds])
         : "queuedOn" in scope
-          ? query.eq("scheduled_for", scope.queuedOn).in("status", ["scheduled", "failed"])
+          ? (scope.orgIds ? query.in("org_id", [...scope.orgIds]) : query)
+              .eq("scheduled_for", scope.queuedOn)
+              .in("status", ["scheduled", "failed"])
           : query.eq("org_id", scope.orgId).gte("scheduled_for", scope.scheduledFrom);
     return scoped.order("id").range(from, to);
   })) as unknown as ReminderRow[];
@@ -304,11 +309,28 @@ export type RunScope = { accountIds?: readonly string[] };
 
 /** The request body the internal endpoints accept: `{}` from cron, or a list of accounts. */
 export const runScopeSchema = z
-  .object({ account_ids: z.array(z.string().uuid()).min(1).optional() })
+  // Capped at one `.in()` chunk: a scoped run is for trying a few customers by
+  // hand, and every list derived from it then fits one request.
+  .object({ account_ids: z.array(z.string().uuid()).min(1).max(IN_CHUNK).optional() })
   // Strict: a misspelled `account_id` would otherwise be dropped, leaving an
   // empty scope — and an empty scope is every account.
   .strict()
   .transform((body): RunScope => (body.account_ids ? { accountIds: body.account_ids } : {}));
+
+/**
+ * The orgs a scoped run touches, or null for a full run. Read up front so an
+ * org outside the scope is never loaded: its read failing would turn the
+ * scoped run's answer into a 500 over customers it never meant to touch.
+ */
+async function orgsInScope(supabase: Admin, scope: RunScope): Promise<Set<string> | null> {
+  if (!scope.accountIds) return null;
+  const { data, error } = await supabase
+    .from("accounts")
+    .select("org_id")
+    .in("id", [...scope.accountIds]);
+  if (error) throw new Error(`Reading the run's accounts failed: ${error.message}`);
+  return new Set((data ?? []).map((account) => account.org_id));
+}
 
 /** Whether a run with this scope covers the account. */
 function inScope(scope: RunScope, accountId: string): boolean {
@@ -357,7 +379,9 @@ export async function planChases(
     errors: [],
   };
 
+  const orgIds = await orgsInScope(supabase, scope);
   for (const org of await loadOrgs(supabase)) {
+    if (orgIds && !orgIds.has(org.id)) continue;
     try {
       await planOrg(supabase, org.id, today, scope, result);
     } catch (error) {
@@ -570,7 +594,12 @@ export async function sendChases(
     errors: [],
   };
 
-  const queue = await loadReminders(supabase, { queuedOn: today });
+  const orgIds = await orgsInScope(supabase, scope);
+  if (orgIds?.size === 0) return result;
+  const queue = await loadReminders(supabase, {
+    queuedOn: today,
+    ...(orgIds ? { orgIds: [...orgIds] } : {}),
+  });
   result.queued = queue.length;
   // Nine of the eleven hourly runs find nothing. Don't spend a provider call
   // on the quota to learn that.
