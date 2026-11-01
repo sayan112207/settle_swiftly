@@ -189,10 +189,14 @@ async function unlinkedEventsNear(
   failed: readonly { to_email: string; created_at: string }[],
 ): Promise<UnlinkedEvent[]> {
   if (failed.length === 0) return [];
+  // Reduced, not spread into Math.min/max: a whole day's queue of failed
+  // sends can exceed the engine's argument limit.
   const times = failed.map((s) => Date.parse(s.created_at));
-  const since = new Date(Math.min(...times)).toISOString();
+  const first = times.reduce((min, t) => (t < min ? t : min), Infinity);
+  const last = times.reduce((max, t) => (t > max ? t : max), -Infinity);
+  const since = new Date(first).toISOString();
   // `matchUnlinked` drops anything later than this anyway.
-  const until = new Date(Math.max(...times) + UNKNOWN_OUTCOME_MATCH_MINUTES * 60_000).toISOString();
+  const until = new Date(last + UNKNOWN_OUTCOME_MATCH_MINUTES * 60_000).toISOString();
   const addresses = [...new Set(failed.flatMap((s) => [s.to_email, s.to_email.toLowerCase()]))];
 
   // Paged as well as chunked: a missed delivery event here reads as a send to
@@ -581,7 +585,7 @@ export async function sendChases(
   // if the quota runs short.
   queue.sort((a, b) => a.row.step - b.row.step);
 
-  for (const { row, facts } of queue) {
+  for (const { row } of queue) {
     try {
       let org = loaded.get(row.org_id);
       if (!org) {
@@ -611,11 +615,6 @@ export async function sendChases(
         continue;
       }
 
-      if (targetsFor(facts, account).length > remaining) {
-        result.stoppedForQuota = quotaMessage(remaining);
-        break;
-      }
-
       const claimedAt = await claim(supabase, row.id, clock());
       if (!claimedAt) continue;
 
@@ -643,12 +642,11 @@ export async function sendChases(
         invoiceId: row.invoice_id,
       });
       const invoice = entries[0]?.invoice;
-      if (!invoice) {
-        await settle(supabase, row.id, "cancelled", "The invoice is no longer open");
-        result.reminders.cancelled += 1;
-        continue;
-      }
+      // No invoice here is paid, voided or moved to another account since the
+      // snapshot. Released, not cancelled: the next run's snapshot tells those
+      // apart, and cancels the reminder only if the invoice has closed.
       if (
+        !invoice ||
         holdReason(freshAccount.status, invoice, today) !== null ||
         !isWindowOpen(windowOf(freshAccount), claimedAt) ||
         !dueToSend(sendTimes(current.row), today)
@@ -659,7 +657,8 @@ export async function sendChases(
       }
       const fresh = current.facts;
       const targets = targetsFor(fresh, freshAccount);
-      // A late soft bounce can add a recipient the check above never counted.
+      // Counted here, on the fresh recipients only. The snapshot's count can be
+      // off either way: a late soft bounce adds one, an opt-out removes one.
       if (targets.length > remaining) {
         await release(supabase, row.id, claimedAt);
         result.stoppedForQuota = quotaMessage(remaining);

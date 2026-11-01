@@ -217,6 +217,9 @@ async function raiseBounceAlerts(
       .ilike("event", "%bounce%")
       // Newest first: the first bounce raised for a contact supplies the
       // alert's address and response, and that should be the latest one.
+      // By the provider's time first, since one ingest run stores many
+      // bounces under the same `received_at`.
+      .order("occurred_at", { ascending: false, nullsFirst: false })
       .order("received_at", { ascending: false })
       .order("id")
       .range(from, to),
