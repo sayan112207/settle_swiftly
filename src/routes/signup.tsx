@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 
 import { AuthForm } from "@/components/auth/AuthForm";
@@ -12,6 +13,7 @@ export const Route = createFileRoute("/signup")({
 
 function SignUpPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string | null>(null);
 
   return (
@@ -36,6 +38,8 @@ function SignUpPage() {
           return null;
         }
 
+        // As on sign-in: whoever used this tab before may still be cached.
+        queryClient.clear();
         await navigate({ to: "/onboarding" });
         return null;
       }}

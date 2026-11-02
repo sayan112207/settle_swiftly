@@ -11,6 +11,7 @@ import { getSmtp2goApiBase, getSmtp2goApiKey } from "@/lib/env.server";
 import {
   activitySearchResponseSchema,
   apiErrorResponseSchema,
+  emailSummaryResponseSchema,
   sendResponseSchema,
   type ActivityEvent,
 } from "@/lib/schemas/email";
@@ -91,6 +92,24 @@ export async function sendEmail(input: SendEmailInput): Promise<SendResult> {
     return { ok: false, error: failures[0] ?? "The provider refused the message." };
   }
   return { ok: true, providerMessageId: email_id };
+}
+
+/**
+ * Emails left in this billing cycle (spec §7).
+ *
+ * Throws rather than guessing. The caller is about to mail customers, and an
+ * unknown quota has to stop the batch — running out mid-ladder hands a
+ * customer half a conversation.
+ */
+export async function emailQuotaRemaining(): Promise<number> {
+  const { status, json } = await post("/stats/email_summary", {});
+  if (status >= 400) {
+    const parsed = apiErrorResponseSchema.safeParse(json);
+    throw new Error(parsed.success ? parsed.data.data.error : `Email summary failed (${status}).`);
+  }
+  const parsed = emailSummaryResponseSchema.safeParse(json);
+  if (!parsed.success) throw new Error("The provider returned an unreadable email summary.");
+  return parsed.data.data.cycle_remaining;
 }
 
 export type ActivityPage = {

@@ -87,7 +87,7 @@ function delay(ms: number): Promise<void> {
  * generic that returned `T` here would let a caller skip validation and still
  * typecheck, which is the failure this module is built to prevent.
  */
-async function requestJson(path: string, init: RequestInit): Promise<unknown> {
+export async function requestJson(path: string, init: RequestInit): Promise<unknown> {
   const response = await fetch(`${API_BASE_PATH}${path}`, {
     ...init,
     signal: init.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),

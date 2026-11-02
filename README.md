@@ -314,3 +314,127 @@ that fed into it.
 Make the `verify` job a required status check on both branches (Settings →
 Branches → Add rule) so a red run blocks the merge instead of merely reporting
 it. Protection is free on public repositories.
+
+## Scheduled jobs
+
+Supabase Cron wakes the background work; the work itself runs in the app,
+behind `/api/v1/internal/*`. The jobs are created by
+[`20261101120000_cron_jobs.sql`](supabase/migrations/20261101120000_cron_jobs.sql),
+and the schedule is fixed to India time
+([spec §8](docs/chasing-scheduler-spec.md#8-the-daily-schedule)).
+
+| Job                  | When (IST)         | Calls                              | Ships   |
+| -------------------- | ------------------ | ---------------------------------- | ------- |
+| `email-poll`         | every 15 min       | `POST /api/v1/internal/email/poll` | enabled |
+| `chase-plan`         | 08:00 daily        | `POST /api/v1/internal/chase/plan` | **off** |
+| `chase-send`         | hourly 09:00–19:00 | `POST /api/v1/internal/chase/send` | **off** |
+| `cron-history-prune` | 08:47 daily        | — (trims `cron.job_run_details`)   | enabled |
+
+The plan writes today's queue and sends nothing; the sends start at 09:00, or
+when an account's own send window opens. A reminder that does not land is
+retried each day for a week, and the user is told why if it never does. A
+hard bounce is not retried — it raises an alert the same day.
+
+### Setting up a project
+
+The jobs authenticate with a shared secret: Vault holds the database's copy,
+the app's host holds the app's copy, and the two must match. Neither copy goes
+in a migration or in git.
+
+```sh
+openssl rand -hex 32   # the secret
+```
+
+1. Set it as `CRON_SECRET` in the app's host secrets (and in `.env` locally).
+2. Store it, and the app's public origin, in Vault from the SQL editor:
+
+   ```sql
+   select vault.create_secret('<the secret>', 'cron_secret',
+     'Bearer token Supabase Cron presents to /api/v1/internal/*');
+   select vault.create_secret('https://<app host>', 'cron_app_url',
+     'Origin the cron jobs post to');
+   ```
+
+Until both are stored, every run fails with `cron_not_configured` — on purpose.
+
+3. Check the two copies match. The poll is safe to call at any time; `401`
+   means the app holds a different secret from the one you just stored:
+
+   ```sh
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+     -H "Authorization: Bearer <the secret>" https://<app host>/api/v1/internal/email/poll
+   ```
+
+Generate a fresh secret for each environment. One used for local testing is
+not a production secret: it has sat in a shell, a `.env` file, and probably a
+terminal scrollback.
+
+To rotate, update both copies; the runs in between get a 401, and the next run
+after that catches up, because every job is safe to repeat.
+
+```sql
+select vault.update_secret(
+  (select id from vault.secrets where name = 'cron_secret'), '<new secret>');
+```
+
+### Is it working?
+
+`cron.job_run_details` only records that a request was _queued_. Whether the
+app answered is in `net._http_response`, which pg_net keeps for six hours.
+
+```sql
+select j.jobname, d.status, d.return_message, d.start_time
+  from cron.job_run_details d join cron.job j using (jobid)
+ order by d.start_time desc limit 20;
+
+select id, status_code, timed_out, error_msg, left(content, 200), created
+  from net._http_response order by created desc limit 20;
+```
+
+### Turning on the chase jobs
+
+They ship disabled, because a job that mails customers on a loop is the one
+failure here that cannot be undone. Run each once by hand and read what it did
+before scheduling it:
+
+1. Plan, which sends nothing:
+
+   ```sh
+   curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://<app host>/api/v1/internal/chase/plan
+   ```
+
+2. Read the queue it wrote:
+
+   ```sql
+   select r.step, r.tone, i.invoice_number, c.name, c.email
+     from reminders r
+     join invoices i on i.id = r.invoice_id
+     join reminder_recipients rr on rr.reminder_id = r.id
+     join contacts c on c.id = rr.contact_id
+    where r.scheduled_for = (now() at time zone 'Asia/Kolkata')::date
+      and r.status in ('scheduled', 'failed');
+   ```
+
+3. Send it, between 09:00 and 19:00 IST:
+
+   ```sh
+   curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://<app host>/api/v1/internal/chase/send
+   ```
+
+Both endpoints take an optional body, `{"account_ids": ["<uuid>", …]}` (up to
+100), which limits the run to those accounts — to try one customer end to end
+without mailing everyone else's. The cron jobs send `{}`, which covers every
+account.
+
+A first plan on imported invoices starts each one at the step matching its age,
+so an invoice 45 days overdue gets a Firm reminder to the director straight
+away. Read the queue before the first send.
+
+Then:
+
+```sql
+select cron.alter_job(job_id := jobid, active := true)
+  from cron.job where jobname in ('chase-plan', 'chase-send');
+```
+
+`active := false` turns them off again immediately.

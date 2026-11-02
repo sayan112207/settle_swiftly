@@ -132,6 +132,21 @@ export async function readJsonBody(request: Request): Promise<unknown> {
   return request.json().catch(() => undefined);
 }
 
+/**
+ * A body that may be left out: empty reads as `{}`, anything else must be
+ * JSON. For endpoints where an absent body means "everything" — there a
+ * malformed one must fail rather than quietly widen to the same meaning.
+ */
+export async function readOptionalJsonBody(request: Request): Promise<unknown> {
+  const text = await request.text();
+  if (text.trim() === "") return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ApiError(422, "validation_error", "The request body isn't valid JSON.");
+  }
+}
+
 /** A 422 carrying the first validation issue. The schemas' messages are user-facing copy. */
 export function validationError(error: ZodError): ApiError {
   return new ApiError(
@@ -187,6 +202,8 @@ const RPC_ERRORS: Record<string, { status: number; message: string }> = {
   not_archived: { status: 409, message: "This account isn't archived." },
   not_found: { status: 404, message: "We couldn't find that account." },
   contact_not_found: { status: 404, message: "We couldn't find that contact." },
+  reminder_not_found: { status: 404, message: "We couldn't find that reminder." },
+  alert_not_found: { status: 404, message: "We couldn't find that alert." },
 };
 
 /** Maps a PostgREST/RPC error to an `ApiError`, or null when it is not one we expect. */

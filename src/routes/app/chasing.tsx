@@ -47,6 +47,7 @@ function ChasingLayout() {
   const location = useLocation();
   const isApprovalQueue = location.pathname === "/app/chasing";
   const isCadence = location.pathname === "/app/chasing/cadence";
+  const isOutbox = location.pathname === "/app/chasing/outbox";
   // The overrides page carries its own title, so the section header and tabs stay out of its way.
   const isOverrides = location.pathname === "/app/chasing/overrides";
   const queryClient = useQueryClient();
@@ -165,6 +166,18 @@ function ChasingLayout() {
                 }`}
               >
                 Cadence
+              </Link>
+              <Link
+                to="/app/chasing/outbox"
+                role="tab"
+                aria-selected={isOutbox}
+                className={`border-b-2 pb-3 text-body font-semibold ${
+                  isOutbox
+                    ? "border-accent-line text-fg"
+                    : "border-transparent text-fg-soft hover:text-fg"
+                }`}
+              >
+                Outbox
               </Link>
             </div>
           </>

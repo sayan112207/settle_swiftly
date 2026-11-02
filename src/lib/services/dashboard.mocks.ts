@@ -77,6 +77,8 @@ export const summaryFixture: DashboardSummary = {
     // DECISION: the third attention item is broken promises, not payments
     // awaiting triage — Payments does not exist in this build.
     promises_broken_this_week: 3,
+    // Matches the Outbox fixture's open alerts, which the tile links to.
+    delivery_alerts_open: 1,
   },
 };
 

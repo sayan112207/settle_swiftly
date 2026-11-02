@@ -29,6 +29,7 @@ import {
 } from "@/lib/services/dashboard-rules";
 import { resolveCaller, type Caller } from "@/lib/services/api.server";
 import { loadAccounts, loadBook, reconcileBrokenPromises } from "@/lib/services/book.server";
+import { countOpenAlerts } from "@/lib/services/outbox-api.server";
 
 /** Reconciles broken promises, then loads the org's open book as of today in the org timezone. */
 async function loadCurrentBook(): Promise<{ caller: Caller; today: IsoDate; book: BookInvoice[] }> {
@@ -42,7 +43,8 @@ async function loadCurrentBook(): Promise<{ caller: Caller; today: IsoDate; book
 
 /** `GET /api/v1/dashboard/summary` */
 export async function buildSummary(): Promise<DashboardSummary> {
-  const { today, book } = await loadCurrentBook();
+  const { caller, today, book } = await loadCurrentBook();
+  const deliveryAlerts = await countOpenAlerts(caller);
 
   const totalPaise = book.reduce((sum, invoice) => sum + invoice.outstandingPaise, 0);
   const overduePaise = book
@@ -88,6 +90,7 @@ export async function buildSummary(): Promise<DashboardSummary> {
           invoice.lastPromiseBrokenAt >= weekStart &&
           invoice.lastPromiseBrokenAt <= today,
       ).length,
+      delivery_alerts_open: deliveryAlerts,
     },
   };
 }

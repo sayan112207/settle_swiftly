@@ -68,7 +68,7 @@ const ASSIGNABLE_OWNERS = [
 ] as const;
 
 const DEFAULT_SEND_WINDOW = {
-  opens_at: "10:00",
+  opens_at: "09:00",
   closes_at: "18:00",
   days: ["Mon", "Tue", "Wed", "Thu", "Fri"] as const,
 };

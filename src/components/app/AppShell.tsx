@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -57,6 +58,7 @@ export function AppShell({ user, orgName, children }: AppShellProps) {
   // displayName is "" when the profile row is missing or hidden by RLS.
   const label = user.displayName || user.email || "";
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [signingOut, setSigningOut] = useState(false);
 
   // Sign-out lived in the old /app header that this shell replaced. It has to
@@ -66,6 +68,9 @@ export function AppShell({ user, orgName, children }: AppShellProps) {
     setSigningOut(true);
     try {
       await signOut();
+      // The cache outlives the session: without this, whoever signs in next
+      // in this tab is shown the last user's outbox and book until refetch.
+      queryClient.clear();
       await navigate({ to: "/login" });
     } finally {
       setSigningOut(false);
