@@ -11,6 +11,7 @@ import {
   mockEnsureAccounts,
   mockPauseAccount,
   mockResumeAccount,
+  mockUpdateChasingSettings,
   resetAccountsMocks,
 } from "@/lib/services/accounts.mocks";
 
@@ -168,6 +169,34 @@ describe("mockCreateContact", () => {
     const resumed = mockResumeAccount(id, getMockAccountDetail(id)!.updated_at);
 
     expect(resumed.chase_status).toBe("active");
+    expect(row(id)?.chase_status).toBe("active");
+  });
+
+  test("choosing a cadence in Settings turns a new account on, as Resume does", () => {
+    const { id, ifMatch } = newAccount("Nilgiri Roasters");
+    mockCreateContact(id, CONTACT, ifMatch);
+    const detail = getMockAccountDetail(id)!;
+    const s = detail.settings;
+
+    const saved = mockUpdateChasingSettings(
+      id,
+      {
+        chase_mode: "default",
+        stop_reason: null,
+        stop_note: null,
+        send_window_mode: s.send_window_mode,
+        terms_preset: s.terms_preset,
+        term_days: s.term_days,
+        is_msme: s.is_msme,
+        tds_section: s.tds_section,
+        tds_rate: s.tds_rate,
+        owner_user_id: s.owner_user_id,
+        notes: s.notes,
+      },
+      detail.updated_at,
+    );
+
+    expect(saved.chase_status).toBe("active");
     expect(row(id)?.chase_status).toBe("active");
   });
 

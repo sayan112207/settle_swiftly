@@ -36,7 +36,8 @@ export function PauseChaseControls({ accountId, detail }: PauseChaseControlsProp
   const isPaused = detail.settings.paused_at !== null || isStopped;
   // "Turn on" only when nothing else holds it. An account paused before
   // chasing became opt-in keeps "Resume": that also ends the pause, and the
-  // label should say so. Choosing a cadence in Settings keeps the pause.
+  // label should say so. Settings is locked while paused, so this is its only
+  // way on.
   const notSetUp =
     isStopped &&
     detail.settings.stop_reason === CHASING_NOT_SET_UP &&

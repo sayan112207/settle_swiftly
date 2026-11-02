@@ -396,12 +396,16 @@ select id, status_code, timed_out, error_msg, left(content, 200), created
 They ship disabled, because a job that mails customers on a loop is the one
 failure here that cannot be undone.
 
-Chasing is also opt-in per account. Every account, new or existing, starts
-with its cadence set to *Don't chase* and the reason *Not set up yet*, and the
-jobs skip it. A user turns it on from the account's Settings tab by choosing
-the default or a custom cadence and saving (or with Resume in the header),
-once its invoices and contacts are in. So enabling the jobs mails only the
-accounts someone has switched on.
+Chasing is also opt-in per account. A new account starts with its cadence
+set to _Don't chase_ and the reason _Not set up yet_, and so did every
+existing account that was being chased when the opt-in shipped. An account
+already stopped from Settings kept its own reason. The jobs skip every
+stopped account, whatever the reason. A user turns one on from its Settings
+tab by choosing the default or a custom cadence and saving, or with _Turn on
+chasing_ in the header, once its invoices and contacts are in. An account
+that is also paused is turned on with _Resume chasing_, which ends the pause
+too: Settings is locked while it is paused. So enabling the jobs mails only
+the accounts someone has switched on.
 
 Run each job once by hand and read what it did before scheduling it:
 

@@ -1362,6 +1362,27 @@ function syncChaseStateFromLadder(accountId: string): void {
 }
 
 /**
+ * The status once a stop or pause is lifted, list row included: a new account
+ * switched on may still have no P0. Its stored statuses are cleared first, so
+ * the stop just lifted is not read back in as a pause. A pause still standing
+ * (`paused_at`) is the account's own and keeps it paused.
+ */
+function liftStop(accountId: string, detail: AccountDetail): void {
+  if (detail.settings.paused_at !== null) return;
+  if (!mockStore.ladderComplete.has(accountId)) {
+    // No ladder to recompute from: what a list-only fixture resumes to.
+    detail.chase_status = "active";
+    detail.status_label = "Active";
+    detail.header_status = "Active";
+    return;
+  }
+  const row = mockStore.list.items.find((item) => item.account_id === accountId);
+  if (row) row.chase_status = "active";
+  detail.chase_status = "active";
+  syncChaseStateFromLadder(accountId);
+}
+
+/**
  * Refuses a contact write on an archived account, as the RPCs do.
  *
  * Every contact mutation goes through `app.lock_account_for_write`, which
@@ -1634,6 +1655,7 @@ export function mockUpdateChasingSettings(
   }
 
   const settings = detail.settings;
+  const wasStopped = settings.chase_mode === "stopped";
   settings.chase_mode = payload.chase_mode;
   if (payload.steps !== undefined) {
     settings.steps = settings.steps.map((step) => {
@@ -1673,6 +1695,9 @@ export function mockUpdateChasingSettings(
     detail.chase_status = "paused";
     detail.status_label = "Paused";
     detail.header_status = `Chasing paused — ${payload.stop_reason}`;
+  } else if (wasStopped) {
+    // A cadence chosen for a stopped account turns chasing on, as Resume does.
+    liftStop(accountId, detail);
   }
 
   detail.updated_at = bumpUpdatedAt();
@@ -1822,18 +1847,8 @@ export function mockResumeAccount(accountId: string, ifMatch: string): AccountDe
     detail.chase_status = "no_p0";
     detail.status_label = "Can't chase";
     detail.header_status = "Can't chase — no primary contact";
-  } else if (mockStore.ladderComplete.has(accountId)) {
-    // Recomputed from the ladder, list row included: a new account switched
-    // on may still have no P0. The old statuses are cleared first, so the
-    // pause this just lifted is not read back in as one.
-    const row = mockStore.list.items.find((item) => item.account_id === accountId);
-    if (row) row.chase_status = "active";
-    detail.chase_status = "active";
-    syncChaseStateFromLadder(accountId);
   } else {
-    detail.chase_status = "active";
-    detail.status_label = "Active";
-    detail.header_status = "Active";
+    liftStop(accountId, detail);
   }
   detail.updated_at = bumpUpdatedAt();
   appendActivity(accountId, "resume", "Chasing resumed.");

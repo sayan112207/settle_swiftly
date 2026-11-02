@@ -254,7 +254,8 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
                 </span>
               ) : null}
             </div>
-            {s.chase_mode === "stopped" && s.stop_reason === CHASING_NOT_SET_UP ? (
+            {/* Not while paused: the form is locked, and Resume is the way on. */}
+            {!isPaused && s.chase_mode === "stopped" && s.stop_reason === CHASING_NOT_SET_UP ? (
               <p className="mt-2 text-body text-fg-muted">
                 Chasing is off for this account until you turn it on. Check its contacts, then
                 choose a cadence below and save.

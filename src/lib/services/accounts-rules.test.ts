@@ -107,6 +107,16 @@ describe("chase status (contract §2.1)", () => {
     expect(
       headerStatus("paused", { ...facts, chaseMode: "stopped", stopReason: "Not set up yet" }),
     ).toBe("Chasing is off — choose a cadence in Settings to turn it on");
+    // Paused before the opt-in: Settings is locked, so the header names the pause.
+    expect(
+      headerStatus("paused", {
+        ...facts,
+        pausedAt: "2026-09-20T10:00:00Z",
+        pauseReason: "Payment plan agreed",
+        chaseMode: "stopped",
+        stopReason: "Not set up yet",
+      }),
+    ).toBe("Chasing paused — Payment plan agreed");
   });
 });
 
