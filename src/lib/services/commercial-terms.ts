@@ -129,6 +129,7 @@ export async function createOffer(body: CreateOfferBody): Promise<Offer> {
       amount: payload.amount,
       expires_on: payload.kind === "payment_plan" ? null : payload.expires_on,
       created_at: TERMS_AS_OF,
+      plan_id: null,
     };
     const store = commercialTermsMockStore();
     // One live offer of a kind per invoice: a second replaces the first.

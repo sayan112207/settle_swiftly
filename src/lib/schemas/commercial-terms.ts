@@ -131,6 +131,8 @@ export const offerSchema = z.object({
   amount: moneyString,
   expires_on: isoDate.nullable(),
   created_at: z.string().datetime({ offset: true }),
+  /** Set once an accepted payment-plan offer has become a plan. */
+  plan_id: z.string().uuid().nullable(),
 });
 
 /** `GET /api/v1/invoices/{invoice_id}/offers` */

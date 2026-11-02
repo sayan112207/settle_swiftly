@@ -1,3 +1,4 @@
+import { csvField } from "@/lib/services/reports-rules";
 import type {
   AccountTerms,
   CommercialTerms,
@@ -6,6 +7,7 @@ import type {
   InstalmentDraft,
   InterestBasis,
   PaymentPlan,
+  TaxDocument,
 } from "@/lib/schemas/commercial-terms";
 
 /**
@@ -460,4 +462,37 @@ export function invoiceInterest(input: {
     policy: resolved.feePolicy,
     bankRatePct: input.bankRatePct,
   });
+}
+
+/**
+ * Tax documents as CSV for the accountant to post. Amounts stay plain decimal
+ * strings (no ₹, no grouping) so a spreadsheet reads them as numbers; credit
+ * notes keep their minus sign.
+ */
+export function taxDocumentsToCsv(documents: readonly TaxDocument[]): string {
+  const header = [
+    "Document",
+    "Type",
+    "Date",
+    "Invoice",
+    "Account",
+    "Taxable",
+    "GST",
+    "Total",
+    "Reason",
+    "State",
+  ];
+  const rows = documents.map((doc) => [
+    doc.number,
+    doc.doc_type === "credit_note" ? "Credit note" : "Debit note",
+    doc.created_on,
+    doc.invoice_number,
+    doc.account_name,
+    doc.taxable,
+    doc.gst,
+    doc.total,
+    doc.reason,
+    doc.state,
+  ]);
+  return [header, ...rows].map((fields) => fields.map(csvField).join(",")).join("\r\n");
 }

@@ -169,10 +169,20 @@ function OfferCards({
         <ul className="flex flex-wrap gap-2" aria-label="Open offers">
           {offers.map((offer) => (
             <li key={offer.offer_id}>
-              <TonePill tone={offer.status === "awaiting_approval" ? "neutral" : "green"}>
-                {KIND_LABEL[offer.kind]}{" "}
-                {offer.status === "awaiting_approval" ? "awaiting approval" : offer.status}
-              </TonePill>
+              {offer.plan_id ? (
+                <Link
+                  to="/app/payment-plans/$planId"
+                  params={{ planId: offer.plan_id }}
+                  className="rounded-pill"
+                >
+                  <TonePill tone="green">View payment plan →</TonePill>
+                </Link>
+              ) : (
+                <TonePill tone={offer.status === "awaiting_approval" ? "neutral" : "green"}>
+                  {KIND_LABEL[offer.kind]}{" "}
+                  {offer.status === "awaiting_approval" ? "awaiting approval" : offer.status}
+                </TonePill>
+              )}
             </li>
           ))}
         </ul>

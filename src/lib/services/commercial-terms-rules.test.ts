@@ -22,6 +22,7 @@ import {
   settlementCheck,
   splitInstalments,
   statutoryRatePct,
+  taxDocumentsToCsv,
   toPaise,
 } from "@/lib/services/commercial-terms-rules";
 import {
@@ -351,5 +352,17 @@ describe("fixtures agree with the rules", () => {
 
   test("the bank rate's age is measured to the fixture's Monday", () => {
     expect(bankRateAgeDays(commercialTermsFixture.rates.bank_rate_as_of, asOf)).toBe(29);
+  });
+});
+
+describe("taxDocumentsToCsv", () => {
+  test("keeps amounts as plain signed decimals", () => {
+    const csv = taxDocumentsToCsv(taxDocumentsFixture);
+    const lines = csv.split("\r\n");
+    expect(lines).toHaveLength(taxDocumentsFixture.length + 1);
+    expect(lines[0]).toBe("Document,Type,Date,Invoice,Account,Taxable,GST,Total,Reason,State");
+    expect(lines[1]).toBe(
+      "CN-0041,Credit note,2026-08-14,INV-2096,Vertex Labs Pvt Ltd,-1016.95,-183.05,-1200.00,Early payment discount 1%,draft",
+    );
   });
 });

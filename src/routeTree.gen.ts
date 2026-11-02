@@ -23,6 +23,7 @@ import { Route as AppInvoicesRouteImport } from './routes/app/invoices'
 import { Route as AppPaymentsRouteImport } from './routes/app/payments'
 import { Route as AppReportsRouteImport } from './routes/app/reports'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
+import { Route as AppTaxDocumentsRouteImport } from './routes/app/tax-documents'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 import { Route as ApiV1ChasesRouteImport } from './routes/api/v1/chases'
 import { Route as AppAccountsIndexRouteImport } from './routes/app/accounts.index'
@@ -32,6 +33,7 @@ import { Route as AppChasingIndexRouteImport } from './routes/app/chasing.index'
 import { Route as AppChasingCadenceRouteImport } from './routes/app/chasing.cadence'
 import { Route as AppChasingOutboxRouteImport } from './routes/app/chasing.outbox'
 import { Route as AppChasingOverridesRouteImport } from './routes/app/chasing.overrides'
+import { Route as AppPaymentPlansPlanIdRouteImport } from './routes/app/payment-plans.$planId'
 import { Route as ApiV1AccountsIndexRouteImport } from './routes/api/v1/accounts/index'
 import { Route as ApiV1DashboardChaseQueueRouteImport } from './routes/api/v1/dashboard/chase-queue'
 import { Route as ApiV1DashboardSummaryRouteImport } from './routes/api/v1/dashboard/summary'
@@ -124,6 +126,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTaxDocumentsRoute = AppTaxDocumentsRouteImport.update({
+  id: '/tax-documents',
+  path: '/tax-documents',
+  getParentRoute: () => AppRoute,
+} as any)
 const AuthCallbackRoute = AuthCallbackRouteImport.update({
   id: '/auth/callback',
   path: '/auth/callback',
@@ -168,6 +175,11 @@ const AppChasingOverridesRoute = AppChasingOverridesRouteImport.update({
   id: '/overrides',
   path: '/overrides',
   getParentRoute: () => AppChasingRoute,
+} as any)
+const AppPaymentPlansPlanIdRoute = AppPaymentPlansPlanIdRouteImport.update({
+  id: '/payment-plans/$planId',
+  path: '/payment-plans/$planId',
+  getParentRoute: () => AppRoute,
 } as any)
 const ApiV1AccountsIndexRoute = ApiV1AccountsIndexRouteImport.update({
   id: '/api/v1/accounts/',
@@ -304,6 +316,7 @@ export interface FileRoutesByFullPath {
   '/app/payments': typeof AppPaymentsRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/tax-documents': typeof AppTaxDocumentsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/app/': typeof AppIndexRoute
   '/api/v1/chases': typeof ApiV1ChasesRoute
@@ -312,6 +325,7 @@ export interface FileRoutesByFullPath {
   '/app/chasing/cadence': typeof AppChasingCadenceRoute
   '/app/chasing/outbox': typeof AppChasingOutboxRoute
   '/app/chasing/overrides': typeof AppChasingOverridesRoute
+  '/app/payment-plans/$planId': typeof AppPaymentPlansPlanIdRoute
   '/app/accounts/': typeof AppAccountsIndexRoute
   '/app/chasing/': typeof AppChasingIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
@@ -347,6 +361,7 @@ export interface FileRoutesByTo {
   '/app/payments': typeof AppPaymentsRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/tax-documents': typeof AppTaxDocumentsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/app': typeof AppIndexRoute
   '/api/v1/chases': typeof ApiV1ChasesRoute
@@ -355,6 +370,7 @@ export interface FileRoutesByTo {
   '/app/chasing/cadence': typeof AppChasingCadenceRoute
   '/app/chasing/outbox': typeof AppChasingOutboxRoute
   '/app/chasing/overrides': typeof AppChasingOverridesRoute
+  '/app/payment-plans/$planId': typeof AppPaymentPlansPlanIdRoute
   '/app/accounts': typeof AppAccountsIndexRoute
   '/app/chasing': typeof AppChasingIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
@@ -394,6 +410,7 @@ export interface FileRoutesById {
   '/app/payments': typeof AppPaymentsRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/tax-documents': typeof AppTaxDocumentsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/app/': typeof AppIndexRoute
   '/api/v1/chases': typeof ApiV1ChasesRoute
@@ -402,6 +419,7 @@ export interface FileRoutesById {
   '/app/chasing/cadence': typeof AppChasingCadenceRoute
   '/app/chasing/outbox': typeof AppChasingOutboxRoute
   '/app/chasing/overrides': typeof AppChasingOverridesRoute
+  '/app/payment-plans/$planId': typeof AppPaymentPlansPlanIdRoute
   '/app/accounts/': typeof AppAccountsIndexRoute
   '/app/chasing/': typeof AppChasingIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
@@ -442,6 +460,7 @@ export interface FileRouteTypes {
     | '/app/payments'
     | '/app/reports'
     | '/app/settings'
+    | '/app/tax-documents'
     | '/auth/callback'
     | '/app/'
     | '/api/v1/chases'
@@ -450,6 +469,7 @@ export interface FileRouteTypes {
     | '/app/chasing/cadence'
     | '/app/chasing/outbox'
     | '/app/chasing/overrides'
+    | '/app/payment-plans/$planId'
     | '/app/accounts/'
     | '/app/chasing/'
     | '/api/v1/dashboard/chase-queue'
@@ -485,6 +505,7 @@ export interface FileRouteTypes {
     | '/app/payments'
     | '/app/reports'
     | '/app/settings'
+    | '/app/tax-documents'
     | '/auth/callback'
     | '/app'
     | '/api/v1/chases'
@@ -493,6 +514,7 @@ export interface FileRouteTypes {
     | '/app/chasing/cadence'
     | '/app/chasing/outbox'
     | '/app/chasing/overrides'
+    | '/app/payment-plans/$planId'
     | '/app/accounts'
     | '/app/chasing'
     | '/api/v1/dashboard/chase-queue'
@@ -531,6 +553,7 @@ export interface FileRouteTypes {
     | '/app/payments'
     | '/app/reports'
     | '/app/settings'
+    | '/app/tax-documents'
     | '/auth/callback'
     | '/app/'
     | '/api/v1/chases'
@@ -539,6 +562,7 @@ export interface FileRouteTypes {
     | '/app/chasing/cadence'
     | '/app/chasing/outbox'
     | '/app/chasing/overrides'
+    | '/app/payment-plans/$planId'
     | '/app/accounts/'
     | '/app/chasing/'
     | '/api/v1/dashboard/chase-queue'
@@ -695,6 +719,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/tax-documents': {
+      id: '/app/tax-documents'
+      path: '/tax-documents'
+      fullPath: '/app/tax-documents'
+      preLoaderRoute: typeof AppTaxDocumentsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/auth/callback': {
       id: '/auth/callback'
       path: '/auth/callback'
@@ -757,6 +788,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/chasing/overrides'
       preLoaderRoute: typeof AppChasingOverridesRouteImport
       parentRoute: typeof AppChasingRoute
+    }
+    '/app/payment-plans/$planId': {
+      id: '/app/payment-plans/$planId'
+      path: '/payment-plans/$planId'
+      fullPath: '/app/payment-plans/$planId'
+      preLoaderRoute: typeof AppPaymentPlansPlanIdRouteImport
+      parentRoute: typeof AppRoute
     }
     '/api/v1/accounts/': {
       id: '/api/v1/accounts/'
@@ -951,7 +989,9 @@ interface AppRouteChildren {
   AppPaymentsRoute: typeof AppPaymentsRoute
   AppReportsRoute: typeof AppReportsRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppTaxDocumentsRoute: typeof AppTaxDocumentsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppPaymentPlansPlanIdRoute: typeof AppPaymentPlansPlanIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -963,7 +1003,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppPaymentsRoute: AppPaymentsRoute,
   AppReportsRoute: AppReportsRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppTaxDocumentsRoute: AppTaxDocumentsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppPaymentPlansPlanIdRoute: AppPaymentPlansPlanIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

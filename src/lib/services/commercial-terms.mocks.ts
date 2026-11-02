@@ -293,6 +293,33 @@ export const paymentPlansFixture: PaymentPlan[] = [
 ];
 
 /**
+ * The accepted plan offers behind the two fixture plans, so the offer sheet
+ * can link from an invoice to its plan.
+ */
+export const acceptedPlanOffersFixture: Offer[] = [
+  {
+    offer_id: "0ff00001-0000-4000-8000-000000000001",
+    invoice_id: SUNDARAM_INV_2104.invoice_id,
+    kind: "payment_plan",
+    status: "accepted",
+    amount: "165000.00",
+    expires_on: null,
+    created_at: "2026-08-12T11:30:00+05:30",
+    plan_id: PLAN_IDS.active,
+  },
+  {
+    offer_id: "0ff00002-0000-4000-8000-000000000002",
+    invoice_id: TERMS_INVOICE_IDS.inv1733,
+    kind: "payment_plan",
+    status: "accepted",
+    amount: "45000.00",
+    expires_on: null,
+    created_at: "2026-06-02T10:05:00+05:30",
+    plan_id: PLAN_IDS.broken,
+  },
+];
+
+/**
  * The mock store. Mutations under `VITE_USE_MOCKS=true` write here, so a
  * created offer or an exported note shows up on the next fetch exactly as it
  * would against the API. `resetCommercialTermsMockStore` puts it back.
@@ -308,7 +335,7 @@ type TermsMockStore = {
 function freshStore(): TermsMockStore {
   return structuredClone({
     terms: commercialTermsFixture,
-    offers: [],
+    offers: acceptedPlanOffersFixture,
     taxDocuments: taxDocumentsFixture,
     plans: paymentPlansFixture,
   });
