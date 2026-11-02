@@ -114,16 +114,22 @@ type ReminderRow = {
   }[];
 };
 
+/**
+ * Joined in to filter reminders by their invoice's account, for a scoped run:
+ * a reminder carries an org but no account of its own.
+ */
+const ACCOUNT_JOIN = "invoices!inner(account_id)";
+
 /** A reminder row with its derived facts. */
 export type LoadedReminder = { row: ReminderRow; facts: ReminderFacts };
 
 /**
- * Which reminders to load: an invoice's history, today's queue (for some orgs,
- * in a scoped run), or an org's recent days.
+ * Which reminders to load: an invoice's history, today's queue (for some
+ * accounts, in a scoped run), or an org's recent days.
  */
 type ReminderScope =
   | { invoiceIds: readonly string[] }
-  | { queuedOn: IsoDate; orgIds?: readonly string[] }
+  | { queuedOn: IsoDate; accountIds?: readonly string[] }
   | { orgId: string; scheduledFrom: IsoDate };
 
 /**
@@ -143,13 +149,16 @@ export async function loadReminders(
   scope: ReminderScope,
   events: Admin = supabase,
 ): Promise<LoadedReminder[]> {
+  const accountIds = "queuedOn" in scope ? scope.accountIds : undefined;
   const rows = (await fetchAllPages((from, to) => {
-    const query = supabase.from("reminders").select(REMINDER_COLUMNS);
+    const query = supabase
+      .from("reminders")
+      .select(accountIds ? `${REMINDER_COLUMNS}, ${ACCOUNT_JOIN}` : REMINDER_COLUMNS);
     const scoped =
       "invoiceIds" in scope
         ? query.in("invoice_id", [...scope.invoiceIds])
         : "queuedOn" in scope
-          ? (scope.orgIds ? query.in("org_id", [...scope.orgIds]) : query)
+          ? (accountIds ? query.in("invoices.account_id", [...accountIds]) : query)
               .eq("scheduled_for", scope.queuedOn)
               .in("status", ["scheduled", "failed"])
           : query.eq("org_id", scope.orgId).gte("scheduled_for", scope.scheduledFrom);
@@ -278,11 +287,15 @@ function windowOf(account: AccountState) {
   });
 }
 
-/** Every org, with the name its reminders are sent under. */
-async function loadOrgs(supabase: Admin): Promise<{ id: string; name: string }[]> {
-  return fetchAllPages((from, to) =>
-    supabase.from("orgs").select("id, name").order("id").range(from, to),
-  );
+/** Every org, or only `ids`, with the name its reminders are sent under. */
+async function loadOrgs(
+  supabase: Admin,
+  ids?: readonly string[],
+): Promise<{ id: string; name: string }[]> {
+  return fetchAllPages((from, to) => {
+    const query = supabase.from("orgs").select("id, name");
+    return (ids ? query.in("id", [...ids]) : query).order("id").range(from, to);
+  });
 }
 
 /** Records a reminder's outcome, releases its claim, and logs a send. */
@@ -318,18 +331,18 @@ export const runScopeSchema = z
   .transform((body): RunScope => (body.account_ids ? { accountIds: body.account_ids } : {}));
 
 /**
- * The orgs a scoped run touches, or null for a full run. Read up front so an
- * org outside the scope is never loaded: its read failing would turn the
- * scoped run's answer into a 500 over customers it never meant to touch.
+ * The orgs a scoped plan touches, or undefined for a full run. Read up front
+ * so an org outside the scope is never loaded: its read failing would turn
+ * the scoped run's answer into a 500 over customers it never meant to touch.
  */
-async function orgsInScope(supabase: Admin, scope: RunScope): Promise<Set<string> | null> {
-  if (!scope.accountIds) return null;
+async function orgsInScope(supabase: Admin, scope: RunScope): Promise<string[] | undefined> {
+  if (!scope.accountIds) return undefined;
   const { data, error } = await supabase
     .from("accounts")
     .select("org_id")
     .in("id", [...scope.accountIds]);
   if (error) throw new Error(`Reading the run's accounts failed: ${error.message}`);
-  return new Set((data ?? []).map((account) => account.org_id));
+  return [...new Set((data ?? []).map((account) => account.org_id))];
 }
 
 /** Whether a run with this scope covers the account. */
@@ -379,9 +392,7 @@ export async function planChases(
     errors: [],
   };
 
-  const orgIds = await orgsInScope(supabase, scope);
-  for (const org of await loadOrgs(supabase)) {
-    if (orgIds && !orgIds.has(org.id)) continue;
+  for (const org of await loadOrgs(supabase, await orgsInScope(supabase, scope))) {
     try {
       await planOrg(supabase, org.id, today, scope, result);
     } catch (error) {
@@ -414,7 +425,7 @@ async function planOrg(
     }
   }
 
-  await cancelOrphans(supabase, orgId, book, result);
+  await cancelOrphans(supabase, orgId, book, scope, result);
 
   for (const entry of book.values()) {
     if (!inScope(scope, entry.invoice.accountId)) continue;
@@ -527,17 +538,23 @@ async function cancelOrphans(
   supabase: Admin,
   orgId: string,
   book: Map<string, BookEntry>,
+  scope: RunScope,
   result: PlanResult,
 ): Promise<void> {
-  const rows = await fetchAllPages((from, to) =>
-    supabase
+  // A scoped run closes only its own accounts' orphans, found through the
+  // invoice. An invoice deleted outright drops out of that join; the next
+  // full run closes its reminders.
+  const { accountIds } = scope;
+  const rows = (await fetchAllPages((from, to) => {
+    const query = supabase
       .from("reminders")
-      .select("id, invoice_id")
+      .select(accountIds ? `id, invoice_id, ${ACCOUNT_JOIN}` : "id, invoice_id")
       .eq("org_id", orgId)
-      .in("status", ["scheduled", "failed"])
+      .in("status", ["scheduled", "failed"]);
+    return (accountIds ? query.in("invoices.account_id", [...accountIds]) : query)
       .order("id")
-      .range(from, to),
-  );
+      .range(from, to);
+  })) as unknown as { id: string; invoice_id: string }[];
 
   for (const row of rows) {
     if (book.has(row.invoice_id)) continue;
@@ -594,11 +611,11 @@ export async function sendChases(
     errors: [],
   };
 
-  const orgIds = await orgsInScope(supabase, scope);
-  if (orgIds?.size === 0) return result;
+  // Scoped by account in the query itself, so `queued` counts only what this
+  // run may send and no other org is read.
   const queue = await loadReminders(supabase, {
     queuedOn: today,
-    ...(orgIds ? { orgIds: [...orgIds] } : {}),
+    ...(scope.accountIds ? { accountIds: scope.accountIds } : {}),
   });
   result.queued = queue.length;
   // Nine of the eleven hourly runs find nothing. Don't spend a provider call
@@ -607,7 +624,9 @@ export async function sendChases(
 
   let remaining = (await emailQuotaRemaining()) - QUOTA_RESERVE;
 
-  const orgs = new Map((await loadOrgs(supabase)).map((o) => [o.id, o.name]));
+  // A scoped queue spans at most 100 accounts, so its orgs fit one `.in()`.
+  const queueOrgs = scope.accountIds ? [...new Set(queue.map((r) => r.row.org_id))] : undefined;
+  const orgs = new Map((await loadOrgs(supabase, queueOrgs)).map((o) => [o.id, o.name]));
   const loaded = new Map<string, Awaited<ReturnType<typeof loadOrg>>>();
 
   // Lower steps first: an older conversation is the one most worth finishing
