@@ -394,8 +394,16 @@ select id, status_code, timed_out, error_msg, left(content, 200), created
 ### Turning on the chase jobs
 
 They ship disabled, because a job that mails customers on a loop is the one
-failure here that cannot be undone. Run each once by hand and read what it did
-before scheduling it:
+failure here that cannot be undone.
+
+Chasing is also opt-in per account. Every account, new or existing, starts
+with its cadence set to *Don't chase* and the reason *Not set up yet*, and the
+jobs skip it. A user turns it on from the account's Settings tab by choosing
+the default or a custom cadence and saving (or with Resume in the header),
+once its invoices and contacts are in. So enabling the jobs mails only the
+accounts someone has switched on.
+
+Run each job once by hand and read what it did before scheduling it:
 
 1. Plan, which sends nothing:
 

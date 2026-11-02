@@ -3,7 +3,12 @@ import { useRef, useState } from "react";
 import { AppButton } from "@/components/app/AppButton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { usePauseAccount, useResumeAccount } from "@/lib/queries/account-detail";
-import { pauseReasonSchema, type AccountDetail, type PauseReason } from "@/lib/schemas/accounts";
+import {
+  CHASING_NOT_SET_UP,
+  pauseReasonSchema,
+  type AccountDetail,
+  type PauseReason,
+} from "@/lib/schemas/accounts";
 import { AccountsApiError } from "@/lib/services/accounts";
 
 type PauseChaseControlsProps = {
@@ -24,7 +29,18 @@ export function PauseChaseControls({ accountId, detail }: PauseChaseControlsProp
   const pauseMutation = usePauseAccount(accountId);
   const resumeMutation = useResumeAccount(accountId);
 
-  const isPaused = detail.settings.paused_at !== null;
+  // Stopped from Settings counts too: Resume lifts both (`account_resume`).
+  // An account that was never turned on is stopped, so this is also where
+  // chasing gets switched on without opening Settings.
+  const isStopped = detail.settings.chase_mode === "stopped";
+  const isPaused = detail.settings.paused_at !== null || isStopped;
+  // "Turn on" only when nothing else holds it. An account paused before
+  // chasing became opt-in keeps "Resume": that also ends the pause, and the
+  // label should say so. Choosing a cadence in Settings keeps the pause.
+  const notSetUp =
+    isStopped &&
+    detail.settings.stop_reason === CHASING_NOT_SET_UP &&
+    detail.settings.paused_at === null;
 
   /**
    * `isPaused` reads the optimistic copy, so a pending pause flips this branch
@@ -59,7 +75,7 @@ export function PauseChaseControls({ accountId, detail }: PauseChaseControlsProp
           );
         }}
       >
-        Resume chasing
+        {notSetUp ? "Turn on chasing" : "Resume chasing"}
       </AppButton>
     );
   }

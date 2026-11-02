@@ -7,6 +7,7 @@ import type {
   PauseAccountBody,
   UpdateChasingSettingsBody,
 } from "@/lib/schemas/accounts";
+import { pauseReasonFor } from "@/lib/schemas/accounts";
 import {
   AccountsApiError,
   accountsQueryKeys,
@@ -53,7 +54,7 @@ function applyChasingSettingsPatch(
 
   if (body.chase_mode === "stopped" && body.stop_reason) {
     next.paused_at = settings.paused_at ?? new Date().toISOString();
-    next.pause_reason = body.stop_reason === "Relationship hold" ? "Other" : body.stop_reason;
+    next.pause_reason = pauseReasonFor(body.stop_reason);
   }
 
   return next;
@@ -256,6 +257,10 @@ export function useResumeAccount(accountId: string) {
           paused_at: null,
           pause_reason: null,
           paused_until: null,
+          // As `account_resume` does: a Settings stop lifts back to the default cadence.
+          ...(previous.settings.chase_mode === "stopped"
+            ? { chase_mode: "default" as const, stop_reason: null, stop_note: null }
+            : {}),
         },
       });
 

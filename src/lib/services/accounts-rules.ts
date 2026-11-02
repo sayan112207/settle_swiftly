@@ -9,6 +9,7 @@
  */
 
 import { formatINR } from "@/lib/format";
+import { CHASING_NOT_SET_UP } from "@/lib/schemas/accounts";
 import type {
   AccountListItem,
   AccountsListFilter,
@@ -119,6 +120,10 @@ export function headerStatus(
       return "Chasing paused — email bouncing";
     case "paused":
       if (account.chaseMode === "stopped") {
+        // Nobody stopped it: chasing is opt-in, and this account was never turned on.
+        if (account.stopReason === CHASING_NOT_SET_UP) {
+          return "Chasing is off — choose a cadence in Settings to turn it on";
+        }
         return `Chasing stopped — ${account.stopReason ?? "Other"}`;
       }
       return account.pausedUntil === null

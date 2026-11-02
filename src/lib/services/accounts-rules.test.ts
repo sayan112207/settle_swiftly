@@ -104,6 +104,9 @@ describe("chase status (contract §2.1)", () => {
     expect(
       headerStatus("paused", { ...facts, chaseMode: "stopped", stopReason: "Relationship hold" }),
     ).toBe("Chasing stopped — Relationship hold");
+    expect(
+      headerStatus("paused", { ...facts, chaseMode: "stopped", stopReason: "Not set up yet" }),
+    ).toBe("Chasing is off — choose a cadence in Settings to turn it on");
   });
 });
 

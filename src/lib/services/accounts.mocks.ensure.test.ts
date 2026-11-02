@@ -10,6 +10,7 @@ import {
   mockUpdateContact,
   mockEnsureAccounts,
   mockPauseAccount,
+  mockResumeAccount,
   resetAccountsMocks,
 } from "@/lib/services/accounts.mocks";
 
@@ -130,7 +131,7 @@ describe("mockCreateContact", () => {
     channel_email: true,
   };
 
-  test("a first P0 makes the account chaseable in the list", () => {
+  test("a first P0 lifts Can't chase, but chasing stays off until turned on", () => {
     const { id, ifMatch } = newAccount("Nilgiri Roasters");
     expect(row(id)?.chase_status).toBe("no_p0");
 
@@ -138,9 +139,36 @@ describe("mockCreateContact", () => {
 
     // The real list derives both of these from the ladder on every read, so a
     // row still reading "Can't chase" would contradict the contact just added.
-    expect(row(id)?.chase_status).toBe("active");
-    expect(row(id)?.status_label).toBe("Active");
+    // Chasing is opt-in, though: a new account starts stopped.
+    expect(row(id)?.chase_status).toBe("paused");
+    expect(row(id)?.status_label).toBe("Paused");
     expect(row(id)?.contacts.p0).toBe("present");
+    expect(getMockAccountDetail(id)?.settings.chase_mode).toBe("stopped");
+  });
+
+  test("turning chasing on moves a new account to the default cadence", () => {
+    const { id } = newAccount("Nilgiri Roasters");
+    const detail = getMockAccountDetail(id)!;
+    expect(detail.settings.stop_reason).toBe("Not set up yet");
+
+    const resumed = mockResumeAccount(id, detail.updated_at);
+
+    expect(resumed.settings.chase_mode).toBe("default");
+    expect(resumed.settings.stop_reason).toBeNull();
+    // On, but still no P0: the list row and the detail agree on that.
+    expect(resumed.chase_status).toBe("no_p0");
+    expect(row(id)?.chase_status).toBe("no_p0");
+  });
+
+  test("a new account with a P0 is active, list and detail alike, once turned on", () => {
+    const { id, ifMatch } = newAccount("Nilgiri Roasters");
+    mockCreateContact(id, CONTACT, ifMatch);
+    expect(row(id)?.chase_status).toBe("paused");
+
+    const resumed = mockResumeAccount(id, getMockAccountDetail(id)!.updated_at);
+
+    expect(resumed.chase_status).toBe("active");
+    expect(row(id)?.chase_status).toBe("active");
   });
 
   test("a P1 does not make an account chaseable", () => {
@@ -282,6 +310,8 @@ describe("accounts whose ladder the fixtures never spelled out", () => {
       ladder.updated_at,
     );
 
-    expect(row(id)?.chase_status).toBe("active");
+    // Recomputed from `no_p0`; `paused` rather than `active` because a new
+    // account's chasing is off until someone turns it on.
+    expect(row(id)?.chase_status).toBe("paused");
   });
 });
