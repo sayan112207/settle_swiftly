@@ -18,6 +18,7 @@ import {
   updateChasingSettings,
 } from "@/lib/services/accounts";
 
+/** The settings as they read after this save, for the optimistic copy. */
 function applyChasingSettingsPatch(
   settings: AccountDetail["settings"],
   body: UpdateChasingSettingsBody,
@@ -238,6 +239,7 @@ export function usePauseAccount(accountId: string) {
   });
 }
 
+/** Resumes chasing: lifts a header pause and a Settings stop, "Not set up yet" included. */
 export function useResumeAccount(accountId: string) {
   const queryClient = useQueryClient();
   const queryKey = accountsQueryKeys.detail(accountId);

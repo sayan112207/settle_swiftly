@@ -1604,6 +1604,7 @@ export function mockUpdateEscalation(
   return structuredClone(contacts);
 }
 
+/** Saves an account's chasing settings, as `account_update_chasing_settings` does. */
 export function mockUpdateChasingSettings(
   accountId: string,
   body: UpdateChasingSettingsBody,
@@ -1791,6 +1792,7 @@ export function mockPauseAccount(
   return structuredClone(detail);
 }
 
+/** Resumes chasing, as `account_resume` does: clears the pause and lifts a Settings stop. */
 export function mockResumeAccount(accountId: string, ifMatch: string): AccountDetail {
   const detail = mockStore.details[accountId];
   if (!detail) {
