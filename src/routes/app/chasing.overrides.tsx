@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { formatINR, formatShortDate } from "@/lib/format";
 import type { AccountChasingSettings } from "@/lib/schemas/accounts";
 import { updateChasingSettings } from "@/lib/services/accounts";
-import { getAccounts, getAccount } from "@/lib/services/accounts";
+import { AccountsApiError, getAccounts, getAccount } from "@/lib/services/accounts";
 
 export const Route = createFileRoute("/app/chasing/overrides")({
   head: () => ({ meta: [{ title: "Cadence overrides — Chasing" }] }),
@@ -87,7 +87,7 @@ function CadenceOverridesPage() {
       void accountDetailsQueries.refetch();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Couldn't reset cadence");
+      toast.error(error instanceof AccountsApiError ? error.message : "Couldn't reset cadence");
     },
   });
 
@@ -123,7 +123,7 @@ function CadenceOverridesPage() {
       ) : accountDetailsQueries.isError ? (
         <div className="flex flex-col items-start gap-3 py-10">
           <p className="text-body font-semibold text-fg">
-            {accountDetailsQueries.error instanceof Error
+            {accountDetailsQueries.error instanceof AccountsApiError
               ? accountDetailsQueries.error.message
               : "Couldn't load overrides."}
           </p>

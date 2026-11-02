@@ -7,7 +7,12 @@ import { AppButton } from "@/components/app/AppButton";
 import { CadenceStepEditor } from "@/components/app/CadenceStepEditor";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useUpdateChasingSettings } from "@/lib/queries/account-detail";
-import { accountsQueryKeys, getAccounts, getAccount } from "@/lib/services/accounts";
+import {
+  AccountsApiError,
+  accountsQueryKeys,
+  getAccounts,
+  getAccount,
+} from "@/lib/services/accounts";
 import { chaseStopReasonSchema, weekdaySchema } from "@/lib/schemas/accounts";
 import type { CadenceStep, ChaseMode, ChaseStopReason, Weekday } from "@/lib/schemas/accounts";
 
@@ -259,7 +264,7 @@ function CadencePage() {
       {selectedAccountId && accountQuery.isError ? (
         <div className="flex flex-col items-start gap-3 py-10">
           <p className="text-body font-semibold text-fg">
-            {accountQuery.error instanceof Error
+            {accountQuery.error instanceof AccountsApiError
               ? accountQuery.error.message
               : "Couldn't load account settings."}
           </p>
