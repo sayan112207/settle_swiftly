@@ -4,6 +4,7 @@ import { useId, useRef, type KeyboardEvent } from "react";
 
 import { AgingBar } from "@/components/app/AgingBar";
 import { AccountActivityPanel } from "@/components/app/AccountActivityPanel";
+import { AccountTermsCard, CreditHoldBanner } from "@/components/app/AccountCommercialTerms";
 import { AccountContactsPanel } from "@/components/app/AccountContactsPanel";
 import { AccountInvoicesPanel } from "@/components/app/AccountInvoicesPanel";
 import { AccountPaymentsPanel } from "@/components/app/AccountPaymentsPanel";
@@ -105,12 +106,14 @@ function AccountDetailPage() {
 
   return (
     <div className="space-y-8">
+      <CreditHoldBanner accountId={accountId} />
       <AccountHeaderCard accountId={accountId} detail={detail} />
       {detail.settings.archived_at !== null ? (
         <ArchivedBanner accountId={accountId} detail={detail} />
       ) : null}
       <AgingBar segments={detail.aging} />
       <AccountRecommendationStrip recommendation={detail.recommendation} />
+      <AccountTermsCard accountId={accountId} termDays={detail.settings.term_days} />
       <AccountDetailTabs
         accountId={accountId}
         accountName={detail.name}

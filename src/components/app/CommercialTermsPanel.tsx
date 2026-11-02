@@ -10,6 +10,7 @@ import { AppSlider } from "@/components/app/AppSlider";
 import { DataTable, type Column } from "@/components/app/DataTable";
 import { QueryNotice } from "@/components/app/QueryNotice";
 import { TonePill } from "@/components/app/TonePill";
+import { SHELL_RESET } from "@/components/app/SidePanel";
 import { formatINR, formatShortDate } from "@/lib/format";
 import type {
   CommercialTerms,
@@ -333,45 +334,47 @@ function RatesDialog({
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-fg/35" />
-        <DialogPrimitive.Content className="app-theme app-shell fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-card bg-card p-6 shadow-overlay">
-          <DialogPrimitive.Title className="text-section font-bold tracking-tight text-fg">
-            Update rates
-          </DialogPrimitive.Title>
-          <DialogPrimitive.Description className="mt-1 text-prose text-fg-soft">
-            Statutory interest on every account with Section 16 switched on is recalculated from
-            these.
-          </DialogPrimitive.Description>
-          <div className="mt-5 grid grid-cols-2 gap-4">
-            <RateField id={ids.bank} label="RBI bank rate (%)" value={bank} onChange={setBank} />
-            <div>
-              <label
-                htmlFor={ids.date}
-                className="block text-eyebrow font-semibold tracking-widest text-fg-muted uppercase"
-              >
-                Effective from
-              </label>
-              <input
-                id={ids.date}
-                type="date"
-                value={date}
-                onChange={(event) => setDate(event.target.value)}
-                className="field mt-1.5"
-              />
+        <DialogPrimitive.Content className="app-theme fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-card bg-card p-6 shadow-overlay">
+          <div className="app-shell" style={SHELL_RESET}>
+            <DialogPrimitive.Title className="text-section font-bold tracking-tight text-fg">
+              Update rates
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Description className="mt-1 text-prose text-fg-soft">
+              Statutory interest on every account with Section 16 switched on is recalculated from
+              these.
+            </DialogPrimitive.Description>
+            <div className="mt-5 grid grid-cols-2 gap-4">
+              <RateField id={ids.bank} label="RBI bank rate (%)" value={bank} onChange={setBank} />
+              <div>
+                <label
+                  htmlFor={ids.date}
+                  className="block text-eyebrow font-semibold tracking-widest text-fg-muted uppercase"
+                >
+                  Effective from
+                </label>
+                <input
+                  id={ids.date}
+                  type="date"
+                  value={date}
+                  onChange={(event) => setDate(event.target.value)}
+                  className="field mt-1.5"
+                />
+              </div>
+              <RateField id={ids.coc} label="Cost of capital (%)" value={coc} onChange={setCoc} />
             </div>
-            <RateField id={ids.coc} label="Cost of capital (%)" value={coc} onChange={setCoc} />
-          </div>
-          {error ? (
-            <p id={ids.error} role="alert" className="mt-4 text-prose text-danger">
-              {error}
-            </p>
-          ) : null}
-          <div className="mt-6 flex justify-end gap-2">
-            <DialogPrimitive.Close asChild>
-              <AppButton variant="secondary">Cancel</AppButton>
-            </DialogPrimitive.Close>
-            <AppButton loading={mutation.isPending} onClick={save}>
-              Save rates
-            </AppButton>
+            {error ? (
+              <p id={ids.error} role="alert" className="mt-4 text-prose text-danger">
+                {error}
+              </p>
+            ) : null}
+            <div className="mt-6 flex justify-end gap-2">
+              <DialogPrimitive.Close asChild>
+                <AppButton variant="secondary">Cancel</AppButton>
+              </DialogPrimitive.Close>
+              <AppButton loading={mutation.isPending} onClick={save}>
+                Save rates
+              </AppButton>
+            </div>
           </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
@@ -510,19 +513,21 @@ function DiscountEditor({
             Net terms
           </label>
           <div className="flex items-center gap-3">
-            <select
-              id={netId}
-              value={netDays}
-              onChange={(event) => setNetDays(Number(event.target.value))}
-              className="field w-auto"
-            >
-              {NET_TERMS_OPTIONS.map((days) => (
-                <option key={days} value={days}>
-                  {days} days
-                </option>
-              ))}
-            </select>
-            <span className="text-prose text-fg-soft">
+            <div className="w-40 shrink-0">
+              <select
+                id={netId}
+                value={netDays}
+                onChange={(event) => setNetDays(Number(event.target.value))}
+                className="field"
+              >
+                {NET_TERMS_OPTIONS.map((days) => (
+                  <option key={days} value={days}>
+                    {days} days
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span className="min-w-0 flex-1 text-prose text-fg-soft">
               Each account&apos;s own payment terms apply in practice.
             </span>
           </div>
