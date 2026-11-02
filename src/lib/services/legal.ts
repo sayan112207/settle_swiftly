@@ -110,7 +110,10 @@ export async function getAdvocateMatters(): Promise<MatterSummary[]> {
   return matterListSchema.parse(body).items;
 }
 
-/** `GET /api/v1/legal/matters/{id}` or `GET /api/v1/advocate/matters/{id}` */
+/**
+ * `GET /api/v1/legal/matters/{id}` or `GET /api/v1/advocate/matters/{id}`.
+ * The advocate's read marks the matter read (clears `unread`).
+ */
 export async function getMatter(viewer: MatterViewer, matterId: string): Promise<MatterDetail> {
   if (getPublicEnv().useMocks) {
     await mockDelay();
@@ -118,6 +121,12 @@ export async function getMatter(viewer: MatterViewer, matterId: string): Promise
     const found =
       viewer === "advocate" ? store.advocateDetails[matterId] : store.businessDetails[matterId];
     if (!found) throw new FeatureApiError("not_found", "This matter doesn't exist.");
+    if (viewer === "advocate") {
+      // Opening a matter marks it read, as the real endpoint does.
+      store.advocateMatters = store.advocateMatters.map((item) =>
+        item.matter_id === matterId ? { ...item, unread: false } : item,
+      );
+    }
     return matterDetailSchema.parse(found);
   }
   const body = await featureRequest(
@@ -356,8 +365,12 @@ export async function updateAdvocateMatter(
   if (getPublicEnv().useMocks) {
     await mockDelay(250);
     const store = legalMockStore();
-    const label = `Stage changed to ${stageLabel(payload.stage)} by ${advocateName}`;
     for (const detail of mockDetails(matterId)) {
+      const label =
+        detail.stage === "awaiting_acceptance"
+          ? `Matter accepted by ${advocateName}`
+          : `Stage changed to ${stageLabel(payload.stage)} by ${advocateName}`;
+      detail.advocate_accepted = true;
       detail.stage = payload.stage;
       detail.next_deadline = payload.next_deadline_on
         ? { on: payload.next_deadline_on, label: detail.next_deadline?.label ?? "Next deadline" }

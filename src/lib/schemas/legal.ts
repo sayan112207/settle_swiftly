@@ -178,6 +178,7 @@ export const matterBriefSchema = z.object({
 
 export const clientContactSchema = z.object({
   name: z.string().min(1),
+  /** Job title only, e.g. "Finance". The business name is `client_name`. */
   role: z.string().min(1),
   email: z.string().email(),
   phone: z.string().min(1),

@@ -413,7 +413,7 @@ export const sharmaAdvocateMatterFixture: MatterDetail = {
   },
   client_contact: {
     name: "Priya Nair",
-    role: `Finance, ${MOCK_CLIENT_NAME}`,
+    role: "Finance",
     email: "priya@meridiantraders.example",
     phone: "+91 98860 44120",
   },
@@ -435,7 +435,14 @@ function shortMatter(
     advocate_accepted: summary.stage !== "awaiting_acceptance",
     closed_on: summary.stage === "recovered" ? summary.last_update_on : null,
     linked_invoices: [],
-    costs: [{ label: "Advocate fee", amount: "4500.00", paid_on: openedOn }],
+    costs: [
+      {
+        label: "Advocate fee",
+        amount: "4500.00",
+        // The client pays once the advocate accepts.
+        paid_on: summary.stage === "awaiting_acceptance" ? null : openedOn,
+      },
+    ],
     documents: [],
     thread: [
       {
@@ -456,7 +463,7 @@ function shortMatter(
     },
     client_contact: {
       name: "Accounts team",
-      role: summary.client_name,
+      role: "Accounts payable",
       email: "accounts@client.example",
       phone: "+91 80 4000 0000",
     },

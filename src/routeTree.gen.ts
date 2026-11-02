@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdvocateRouteImport } from './routes/advocate'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
@@ -66,6 +67,11 @@ import { Route as ApiV1OutboxRemindersReminderIdCancelRouteImport } from './rout
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdvocateRoute = AdvocateRouteImport.update({
+  id: '/advocate',
+  path: '/advocate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRoute = AppRouteImport.update({
@@ -346,6 +352,7 @@ const ApiV1OutboxRemindersReminderIdCancelRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/advocate': typeof AdvocateRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
@@ -401,6 +408,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/advocate': typeof AdvocateRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
@@ -453,6 +461,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/advocate': typeof AdvocateRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
@@ -510,6 +519,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/advocate'
     | '/app'
     | '/login'
     | '/onboarding'
@@ -565,6 +575,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/advocate'
     | '/login'
     | '/onboarding'
     | '/signup'
@@ -616,6 +627,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/advocate'
     | '/app'
     | '/login'
     | '/onboarding'
@@ -672,6 +684,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdvocateRoute: typeof AdvocateRoute
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -708,6 +721,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/advocate': {
+      id: '/advocate'
+      path: '/advocate'
+      fullPath: '/advocate'
+      preLoaderRoute: typeof AdvocateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -1167,6 +1187,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdvocateRoute: AdvocateRoute,
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
