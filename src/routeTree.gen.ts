@@ -20,6 +20,7 @@ import { Route as AppAddEntriesRouteImport } from './routes/app/add-entries'
 import { Route as AppChasingRouteImport } from './routes/app/chasing'
 import { Route as AppDashboardRouteImport } from './routes/app/dashboard'
 import { Route as AppInvoicesRouteImport } from './routes/app/invoices'
+import { Route as AppLegalRouteImport } from './routes/app/legal'
 import { Route as AppPaymentsRouteImport } from './routes/app/payments'
 import { Route as AppReportsRouteImport } from './routes/app/reports'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
@@ -33,11 +34,17 @@ import { Route as AppChasingIndexRouteImport } from './routes/app/chasing.index'
 import { Route as AppChasingCadenceRouteImport } from './routes/app/chasing.cadence'
 import { Route as AppChasingOutboxRouteImport } from './routes/app/chasing.outbox'
 import { Route as AppChasingOverridesRouteImport } from './routes/app/chasing.overrides'
+import { Route as AppLegalIndexRouteImport } from './routes/app/legal.index'
+import { Route as AppLegalAdvocatesRouteImport } from './routes/app/legal.advocates'
+import { Route as AppLegalRecoverRouteImport } from './routes/app/legal.recover'
+import { Route as AppLegalReviewRouteImport } from './routes/app/legal.review'
 import { Route as AppPaymentPlansPlanIdRouteImport } from './routes/app/payment-plans.$planId'
 import { Route as ApiV1AccountsIndexRouteImport } from './routes/api/v1/accounts/index'
 import { Route as ApiV1DashboardChaseQueueRouteImport } from './routes/api/v1/dashboard/chase-queue'
 import { Route as ApiV1DashboardSummaryRouteImport } from './routes/api/v1/dashboard/summary'
 import { Route as ApiV1OutboxIndexRouteImport } from './routes/api/v1/outbox/index'
+import { Route as AppLegalMattersIndexRouteImport } from './routes/app/legal.matters.index'
+import { Route as AppLegalMattersMatterIdRouteImport } from './routes/app/legal.matters.$matterId'
 import { Route as ApiV1AccountsAccountIdIndexRouteImport } from './routes/api/v1/accounts/$accountId/index'
 import { Route as ApiV1AccountsAccountIdActivityRouteImport } from './routes/api/v1/accounts/$accountId/activity'
 import { Route as ApiV1AccountsAccountIdArchiveRouteImport } from './routes/api/v1/accounts/$accountId/archive'
@@ -111,6 +118,11 @@ const AppInvoicesRoute = AppInvoicesRouteImport.update({
   path: '/invoices',
   getParentRoute: () => AppRoute,
 } as any)
+const AppLegalRoute = AppLegalRouteImport.update({
+  id: '/legal',
+  path: '/legal',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPaymentsRoute = AppPaymentsRouteImport.update({
   id: '/payments',
   path: '/payments',
@@ -176,6 +188,26 @@ const AppChasingOverridesRoute = AppChasingOverridesRouteImport.update({
   path: '/overrides',
   getParentRoute: () => AppChasingRoute,
 } as any)
+const AppLegalIndexRoute = AppLegalIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppLegalRoute,
+} as any)
+const AppLegalAdvocatesRoute = AppLegalAdvocatesRouteImport.update({
+  id: '/advocates',
+  path: '/advocates',
+  getParentRoute: () => AppLegalRoute,
+} as any)
+const AppLegalRecoverRoute = AppLegalRecoverRouteImport.update({
+  id: '/recover',
+  path: '/recover',
+  getParentRoute: () => AppLegalRoute,
+} as any)
+const AppLegalReviewRoute = AppLegalReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
+  getParentRoute: () => AppLegalRoute,
+} as any)
 const AppPaymentPlansPlanIdRoute = AppPaymentPlansPlanIdRouteImport.update({
   id: '/payment-plans/$planId',
   path: '/payment-plans/$planId',
@@ -201,6 +233,16 @@ const ApiV1OutboxIndexRoute = ApiV1OutboxIndexRouteImport.update({
   id: '/api/v1/outbox/',
   path: '/api/v1/outbox/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppLegalMattersIndexRoute = AppLegalMattersIndexRouteImport.update({
+  id: '/matters/',
+  path: '/matters/',
+  getParentRoute: () => AppLegalRoute,
+} as any)
+const AppLegalMattersMatterIdRoute = AppLegalMattersMatterIdRouteImport.update({
+  id: '/matters/$matterId',
+  path: '/matters/$matterId',
+  getParentRoute: () => AppLegalRoute,
 } as any)
 const ApiV1AccountsAccountIdIndexRoute =
   ApiV1AccountsAccountIdIndexRouteImport.update({
@@ -313,6 +355,7 @@ export interface FileRoutesByFullPath {
   '/app/chasing': typeof AppChasingRouteWithChildren
   '/app/dashboard': typeof AppDashboardRoute
   '/app/invoices': typeof AppInvoicesRoute
+  '/app/legal': typeof AppLegalRouteWithChildren
   '/app/payments': typeof AppPaymentsRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
@@ -325,13 +368,19 @@ export interface FileRoutesByFullPath {
   '/app/chasing/cadence': typeof AppChasingCadenceRoute
   '/app/chasing/outbox': typeof AppChasingOutboxRoute
   '/app/chasing/overrides': typeof AppChasingOverridesRoute
+  '/app/legal/advocates': typeof AppLegalAdvocatesRoute
+  '/app/legal/recover': typeof AppLegalRecoverRoute
+  '/app/legal/review': typeof AppLegalReviewRoute
   '/app/payment-plans/$planId': typeof AppPaymentPlansPlanIdRoute
   '/app/accounts/': typeof AppAccountsIndexRoute
   '/app/chasing/': typeof AppChasingIndexRoute
+  '/app/legal/': typeof AppLegalIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
+  '/app/legal/matters/$matterId': typeof AppLegalMattersMatterIdRoute
   '/api/v1/accounts/': typeof ApiV1AccountsIndexRoute
   '/api/v1/outbox/': typeof ApiV1OutboxIndexRoute
+  '/app/legal/matters/': typeof AppLegalMattersIndexRoute
   '/api/v1/accounts/$accountId/activity': typeof ApiV1AccountsAccountIdActivityRoute
   '/api/v1/accounts/$accountId/archive': typeof ApiV1AccountsAccountIdArchiveRoute
   '/api/v1/accounts/$accountId/chasing-settings': typeof ApiV1AccountsAccountIdChasingSettingsRoute
@@ -370,13 +419,19 @@ export interface FileRoutesByTo {
   '/app/chasing/cadence': typeof AppChasingCadenceRoute
   '/app/chasing/outbox': typeof AppChasingOutboxRoute
   '/app/chasing/overrides': typeof AppChasingOverridesRoute
+  '/app/legal/advocates': typeof AppLegalAdvocatesRoute
+  '/app/legal/recover': typeof AppLegalRecoverRoute
+  '/app/legal/review': typeof AppLegalReviewRoute
   '/app/payment-plans/$planId': typeof AppPaymentPlansPlanIdRoute
   '/app/accounts': typeof AppAccountsIndexRoute
   '/app/chasing': typeof AppChasingIndexRoute
+  '/app/legal': typeof AppLegalIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
+  '/app/legal/matters/$matterId': typeof AppLegalMattersMatterIdRoute
   '/api/v1/accounts': typeof ApiV1AccountsIndexRoute
   '/api/v1/outbox': typeof ApiV1OutboxIndexRoute
+  '/app/legal/matters': typeof AppLegalMattersIndexRoute
   '/api/v1/accounts/$accountId/activity': typeof ApiV1AccountsAccountIdActivityRoute
   '/api/v1/accounts/$accountId/archive': typeof ApiV1AccountsAccountIdArchiveRoute
   '/api/v1/accounts/$accountId/chasing-settings': typeof ApiV1AccountsAccountIdChasingSettingsRoute
@@ -407,6 +462,7 @@ export interface FileRoutesById {
   '/app/chasing': typeof AppChasingRouteWithChildren
   '/app/dashboard': typeof AppDashboardRoute
   '/app/invoices': typeof AppInvoicesRoute
+  '/app/legal': typeof AppLegalRouteWithChildren
   '/app/payments': typeof AppPaymentsRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
@@ -419,13 +475,19 @@ export interface FileRoutesById {
   '/app/chasing/cadence': typeof AppChasingCadenceRoute
   '/app/chasing/outbox': typeof AppChasingOutboxRoute
   '/app/chasing/overrides': typeof AppChasingOverridesRoute
+  '/app/legal/advocates': typeof AppLegalAdvocatesRoute
+  '/app/legal/recover': typeof AppLegalRecoverRoute
+  '/app/legal/review': typeof AppLegalReviewRoute
   '/app/payment-plans/$planId': typeof AppPaymentPlansPlanIdRoute
   '/app/accounts/': typeof AppAccountsIndexRoute
   '/app/chasing/': typeof AppChasingIndexRoute
+  '/app/legal/': typeof AppLegalIndexRoute
   '/api/v1/dashboard/chase-queue': typeof ApiV1DashboardChaseQueueRoute
   '/api/v1/dashboard/summary': typeof ApiV1DashboardSummaryRoute
+  '/app/legal/matters/$matterId': typeof AppLegalMattersMatterIdRoute
   '/api/v1/accounts/': typeof ApiV1AccountsIndexRoute
   '/api/v1/outbox/': typeof ApiV1OutboxIndexRoute
+  '/app/legal/matters/': typeof AppLegalMattersIndexRoute
   '/api/v1/accounts/$accountId/activity': typeof ApiV1AccountsAccountIdActivityRoute
   '/api/v1/accounts/$accountId/archive': typeof ApiV1AccountsAccountIdArchiveRoute
   '/api/v1/accounts/$accountId/chasing-settings': typeof ApiV1AccountsAccountIdChasingSettingsRoute
@@ -457,6 +519,7 @@ export interface FileRouteTypes {
     | '/app/chasing'
     | '/app/dashboard'
     | '/app/invoices'
+    | '/app/legal'
     | '/app/payments'
     | '/app/reports'
     | '/app/settings'
@@ -469,13 +532,19 @@ export interface FileRouteTypes {
     | '/app/chasing/cadence'
     | '/app/chasing/outbox'
     | '/app/chasing/overrides'
+    | '/app/legal/advocates'
+    | '/app/legal/recover'
+    | '/app/legal/review'
     | '/app/payment-plans/$planId'
     | '/app/accounts/'
     | '/app/chasing/'
+    | '/app/legal/'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
+    | '/app/legal/matters/$matterId'
     | '/api/v1/accounts/'
     | '/api/v1/outbox/'
+    | '/app/legal/matters/'
     | '/api/v1/accounts/$accountId/activity'
     | '/api/v1/accounts/$accountId/archive'
     | '/api/v1/accounts/$accountId/chasing-settings'
@@ -514,13 +583,19 @@ export interface FileRouteTypes {
     | '/app/chasing/cadence'
     | '/app/chasing/outbox'
     | '/app/chasing/overrides'
+    | '/app/legal/advocates'
+    | '/app/legal/recover'
+    | '/app/legal/review'
     | '/app/payment-plans/$planId'
     | '/app/accounts'
     | '/app/chasing'
+    | '/app/legal'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
+    | '/app/legal/matters/$matterId'
     | '/api/v1/accounts'
     | '/api/v1/outbox'
+    | '/app/legal/matters'
     | '/api/v1/accounts/$accountId/activity'
     | '/api/v1/accounts/$accountId/archive'
     | '/api/v1/accounts/$accountId/chasing-settings'
@@ -550,6 +625,7 @@ export interface FileRouteTypes {
     | '/app/chasing'
     | '/app/dashboard'
     | '/app/invoices'
+    | '/app/legal'
     | '/app/payments'
     | '/app/reports'
     | '/app/settings'
@@ -562,13 +638,19 @@ export interface FileRouteTypes {
     | '/app/chasing/cadence'
     | '/app/chasing/outbox'
     | '/app/chasing/overrides'
+    | '/app/legal/advocates'
+    | '/app/legal/recover'
+    | '/app/legal/review'
     | '/app/payment-plans/$planId'
     | '/app/accounts/'
     | '/app/chasing/'
+    | '/app/legal/'
     | '/api/v1/dashboard/chase-queue'
     | '/api/v1/dashboard/summary'
+    | '/app/legal/matters/$matterId'
     | '/api/v1/accounts/'
     | '/api/v1/outbox/'
+    | '/app/legal/matters/'
     | '/api/v1/accounts/$accountId/activity'
     | '/api/v1/accounts/$accountId/archive'
     | '/api/v1/accounts/$accountId/chasing-settings'
@@ -698,6 +780,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppInvoicesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/legal': {
+      id: '/app/legal'
+      path: '/legal'
+      fullPath: '/app/legal'
+      preLoaderRoute: typeof AppLegalRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/payments': {
       id: '/app/payments'
       path: '/payments'
@@ -789,6 +878,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppChasingOverridesRouteImport
       parentRoute: typeof AppChasingRoute
     }
+    '/app/legal/': {
+      id: '/app/legal/'
+      path: '/'
+      fullPath: '/app/legal/'
+      preLoaderRoute: typeof AppLegalIndexRouteImport
+      parentRoute: typeof AppLegalRoute
+    }
+    '/app/legal/advocates': {
+      id: '/app/legal/advocates'
+      path: '/advocates'
+      fullPath: '/app/legal/advocates'
+      preLoaderRoute: typeof AppLegalAdvocatesRouteImport
+      parentRoute: typeof AppLegalRoute
+    }
+    '/app/legal/recover': {
+      id: '/app/legal/recover'
+      path: '/recover'
+      fullPath: '/app/legal/recover'
+      preLoaderRoute: typeof AppLegalRecoverRouteImport
+      parentRoute: typeof AppLegalRoute
+    }
+    '/app/legal/review': {
+      id: '/app/legal/review'
+      path: '/review'
+      fullPath: '/app/legal/review'
+      preLoaderRoute: typeof AppLegalReviewRouteImport
+      parentRoute: typeof AppLegalRoute
+    }
     '/app/payment-plans/$planId': {
       id: '/app/payment-plans/$planId'
       path: '/payment-plans/$planId'
@@ -823,6 +940,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/v1/outbox/'
       preLoaderRoute: typeof ApiV1OutboxIndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/app/legal/matters/': {
+      id: '/app/legal/matters/'
+      path: '/matters'
+      fullPath: '/app/legal/matters/'
+      preLoaderRoute: typeof AppLegalMattersIndexRouteImport
+      parentRoute: typeof AppLegalRoute
+    }
+    '/app/legal/matters/$matterId': {
+      id: '/app/legal/matters/$matterId'
+      path: '/matters/$matterId'
+      fullPath: '/app/legal/matters/$matterId'
+      preLoaderRoute: typeof AppLegalMattersMatterIdRouteImport
+      parentRoute: typeof AppLegalRoute
     }
     '/api/v1/accounts/$accountId/': {
       id: '/api/v1/accounts/$accountId/'
@@ -980,12 +1111,35 @@ const AppChasingRouteWithChildren = AppChasingRoute._addFileChildren(
   AppChasingRouteChildren,
 )
 
+interface AppLegalRouteChildren {
+  AppLegalAdvocatesRoute: typeof AppLegalAdvocatesRoute
+  AppLegalRecoverRoute: typeof AppLegalRecoverRoute
+  AppLegalReviewRoute: typeof AppLegalReviewRoute
+  AppLegalIndexRoute: typeof AppLegalIndexRoute
+  AppLegalMattersMatterIdRoute: typeof AppLegalMattersMatterIdRoute
+  AppLegalMattersIndexRoute: typeof AppLegalMattersIndexRoute
+}
+
+const AppLegalRouteChildren: AppLegalRouteChildren = {
+  AppLegalAdvocatesRoute: AppLegalAdvocatesRoute,
+  AppLegalRecoverRoute: AppLegalRecoverRoute,
+  AppLegalReviewRoute: AppLegalReviewRoute,
+  AppLegalIndexRoute: AppLegalIndexRoute,
+  AppLegalMattersMatterIdRoute: AppLegalMattersMatterIdRoute,
+  AppLegalMattersIndexRoute: AppLegalMattersIndexRoute,
+}
+
+const AppLegalRouteWithChildren = AppLegalRoute._addFileChildren(
+  AppLegalRouteChildren,
+)
+
 interface AppRouteChildren {
   AppAccountsRoute: typeof AppAccountsRouteWithChildren
   AppAddEntriesRoute: typeof AppAddEntriesRoute
   AppChasingRoute: typeof AppChasingRouteWithChildren
   AppDashboardRoute: typeof AppDashboardRoute
   AppInvoicesRoute: typeof AppInvoicesRoute
+  AppLegalRoute: typeof AppLegalRouteWithChildren
   AppPaymentsRoute: typeof AppPaymentsRoute
   AppReportsRoute: typeof AppReportsRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -1000,6 +1154,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppChasingRoute: AppChasingRouteWithChildren,
   AppDashboardRoute: AppDashboardRoute,
   AppInvoicesRoute: AppInvoicesRoute,
+  AppLegalRoute: AppLegalRouteWithChildren,
   AppPaymentsRoute: AppPaymentsRoute,
   AppReportsRoute: AppReportsRoute,
   AppSettingsRoute: AppSettingsRoute,

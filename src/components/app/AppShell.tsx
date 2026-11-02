@@ -33,6 +33,7 @@ const NAV_ITEMS = [
   { label: "Add entries", to: "/app/add-entries" },
   { label: "Payments", to: "/app/payments" },
   { label: "Chasing", to: "/app/chasing" },
+  { label: "Legal", to: "/app/legal" },
   { label: "Tax documents", to: "/app/tax-documents" },
   { label: "Reports", to: "/app/reports" },
   { label: "Settings", to: "/app/settings" },
