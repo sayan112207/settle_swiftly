@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { Lock } from "lucide-react";
 
 import { AppButton } from "@/components/app/AppButton";
+import { CommercialTermsPanel } from "@/components/app/CommercialTermsPanel";
 import { PRODUCT_NAME } from "@/lib/brand";
 import type { SettingsView, TeamMember } from "@/lib/settings-view";
 import { DEFAULT_SEND_WINDOW } from "@/lib/services/accounts-rules";
@@ -347,6 +348,8 @@ export function SettingsPanel({ section, view }: { section: string; view: Settin
       return <TeamPanel members={view.members} />;
     case "chasing-defaults":
       return <ChasingDefaultsPanel />;
+    case "commercial-terms":
+      return <CommercialTermsPanel canEdit={view.canEdit} />;
     case "notifications":
       return <NotificationsPanel />;
     default:
