@@ -14,3 +14,13 @@ export const PRODUCT_NAME = "Settle Swiftly";
  * the product is referred to in sentences.
  */
 export const WORDMARK = "Settle Swiftly";
+
+/** Canonical origin; every absolute URL in page metadata is built from it. */
+export const SITE_URL = "https://settleswiftly.com";
+
+/** Browser chrome colour (address bar, manifest): the logo's green. */
+export const THEME_COLOR = "#087A52";
+
+/** Social preview image: absolute, because crawlers do not resolve relative URLs. */
+export const OG_IMAGE_URL = `${SITE_URL}/og-image.png`;
+export const OG_IMAGE_ALT = `${PRODUCT_NAME} — send the invoice, we chase the payment`;
