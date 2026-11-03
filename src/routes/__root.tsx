@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { PRODUCT_NAME, THEME_COLOR } from "../lib/brand";
 
 function NotFoundComponent() {
   return (
@@ -95,14 +96,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
+      { property: "og:site_name", content: PRODUCT_NAME },
+      { name: "theme-color", content: THEME_COLOR },
     ],
     links: [
       {
         rel: "stylesheet",
         href: appCss,
       },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/favicon.ico", sizes: "48x48" },
+      { rel: "icon", href: "/favicon.svg", type: "image/svg+xml", sizes: "any" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+      { rel: "manifest", href: "/site.webmanifest" },
     ],
   }),
   shellComponent: RootShell,
