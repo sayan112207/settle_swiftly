@@ -1,6 +1,7 @@
 @import "tailwindcss" source(none);
 @import "tw-animate-css";
 @import "./styles/app-tokens.css";
+@import "./styles/settle-loader.css";
 @source "../src";
 
 /*

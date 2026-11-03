@@ -6,8 +6,9 @@ import { ChevronDown, Search, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppButton } from "@/components/app/AppButton";
-import { AppSkeleton } from "@/components/app/AppSkeleton";
+import { SettleLoader } from "@/components/app/SettleLoader";
 import { PRODUCT_NAME } from "@/lib/brand";
+import { usePageLoader } from "@/lib/hooks/usePageLoader";
 import { formatINR, formatOverdueDays, formatShortDate } from "@/lib/format";
 import { accountsQueryKeys, getAccounts } from "@/lib/services/accounts";
 import { DashboardApiError, dashboardQueryKeys, postChases } from "@/lib/services/dashboard";
@@ -412,6 +413,9 @@ function InvoicesPage() {
 
   const isLoading = invoicesQuery.isPending;
   const isError = !!invoicesQuery.error;
+  // The whole page waits on this one query, so the page-level loader owns both
+  // the wait and the failure; the card below stays only for the loader-less path.
+  const loader = usePageLoader(isLoading, isError);
   const isEmpty = !isLoading && (invoicesQuery.data?.length ?? 0) === 0;
   const isNoResults =
     !isLoading && filteredInvoices.length === 0 && (invoicesQuery.data?.length ?? 0) > 0;
@@ -560,36 +564,20 @@ function InvoicesPage() {
         </div>
       </header>
 
-      {/* Loading state */}
-      {isLoading && (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }, (_, i) => (
-            <AppSkeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      )}
-
-      {/* Error state */}
-      {isError && (
-        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-          <p className="text-sm font-semibold text-gray-900">We couldn't load your invoices</p>
-          <p className="mt-1 text-sm text-gray-600">
-            Your filters are still applied — nothing has changed.
-          </p>
-          <AppButton
-            variant="secondary"
-            onClick={async () => {
-              await invoicesQuery.refetch();
-            }}
-            className="mt-4"
-          >
-            Try again
-          </AppButton>
+      {/* Loading / error state: page-level loader, retry refetches the same query */}
+      {loader.status && (
+        <div className="flex min-h-64 items-center justify-center pb-16">
+          <SettleLoader
+            status={loader.status}
+            label="invoices"
+            onExited={loader.onExited}
+            onRetry={() => void invoicesQuery.refetch()}
+          />
         </div>
       )}
 
       {/* Empty state */}
-      {!isLoading && !isError && isEmpty && (
+      {!loader.status && !isLoading && !isError && isEmpty && (
         <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
           <h2 className="text-lg font-bold text-gray-900">No invoices yet</h2>
           <p className="mt-1 text-sm text-gray-600">
@@ -605,7 +593,7 @@ function InvoicesPage() {
       )}
 
       {/* Populated state */}
-      {!isLoading && !isError && !isEmpty && (
+      {!loader.status && !isLoading && !isError && !isEmpty && (
         <>
           {/* Metrics */}
           <div className="flex gap-8 border-b border-gray-200 pb-4 items-baseline">

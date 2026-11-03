@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 
+import { RouteLoader } from "@/components/app/RouteLoader";
 import { Toaster } from "@/components/ui/sonner";
 import { WORDMARK } from "@/lib/brand";
 import { signOut } from "@/lib/services/auth.service";
@@ -60,6 +61,24 @@ export function AppShell({ user, orgName, children }: AppShellProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [signingOut, setSigningOut] = useState(false);
+  const [loaderVisible, setLoaderVisible] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+
+  // After a slow page change, move focus to the new page's heading so keyboard
+  // and screen-reader users land on the content rather than the nav link they
+  // pressed. Skipped when focus is already somewhere deliberate inside the page
+  // (an autofocused field, the loader's own Retry): those win.
+  const focusPageHeading = useCallback(() => {
+    const main = mainRef.current;
+    const active = document.activeElement;
+    const focusIsNeutral = !active || active === document.body || !main?.contains(active);
+    if (!main || !focusIsNeutral) return;
+    const heading = main.querySelector<HTMLElement>("h1");
+    if (!heading) return;
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+    heading.addEventListener("blur", () => heading.removeAttribute("tabindex"), { once: true });
+  }, []);
 
   // Sign-out lived in the old /app header that this shell replaced. It has to
   // live here instead: the shell is the only chrome left, so dropping it would
@@ -154,8 +173,13 @@ export function AppShell({ user, orgName, children }: AppShellProps) {
           min-w-0 is what lets the chase table's overflow-auto engage: a flex
           child defaults to min-width:auto, which would grow the page to the
           table's min-width instead of scrolling the table. */}
-      <main className="max-w-7xl min-w-0 flex-1 bg-page px-8 pt-6 pb-10">
+      <main
+        ref={mainRef}
+        aria-busy={loaderVisible || undefined}
+        className="relative max-w-7xl min-w-0 flex-1 bg-page px-8 pt-6 pb-10"
+      >
         {children}
+        <RouteLoader onVisibleChange={setLoaderVisible} onSettled={focusPageHeading} />
         <Toaster />
       </main>
     </div>
