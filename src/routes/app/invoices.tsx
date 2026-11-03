@@ -413,9 +413,12 @@ function InvoicesPage() {
 
   const isLoading = invoicesQuery.isPending;
   const isError = !!invoicesQuery.error;
-  // The whole page waits on this one query, so the page-level loader owns both
-  // the wait and the failure; the card below stays only for the loader-less path.
-  const loader = usePageLoader(isLoading, isError);
+  // A failed refetch with a list already on screen must not replace it: the
+  // page-level error state is only for "no data yet". The stale list stays and
+  // the inline banner below offers a retry.
+  const loadFailed = isError && !invoicesQuery.data;
+  const refetchFailed = isError && !!invoicesQuery.data;
+  const loader = usePageLoader(isLoading, loadFailed);
   const isEmpty = !isLoading && (invoicesQuery.data?.length ?? 0) === 0;
   const isNoResults =
     !isLoading && filteredInvoices.length === 0 && (invoicesQuery.data?.length ?? 0) > 0;
@@ -577,7 +580,23 @@ function InvoicesPage() {
       )}
 
       {/* Empty state */}
-      {!loader.status && !isLoading && !isError && isEmpty && (
+      {/* Refetch failed but the list is still on screen: keep it, offer a retry */}
+      {refetchFailed && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-4 rounded-lg border border-gray-200 bg-white px-4 py-3"
+        >
+          <p className="text-sm text-gray-900">
+            <span className="font-semibold">We couldn't refresh your invoices.</span> Showing the
+            last list we loaded — your filters are still applied.
+          </p>
+          <AppButton variant="secondary" onClick={() => void invoicesQuery.refetch()}>
+            Retry
+          </AppButton>
+        </div>
+      )}
+
+      {!loader.status && !isLoading && !loadFailed && isEmpty && (
         <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
           <h2 className="text-lg font-bold text-gray-900">No invoices yet</h2>
           <p className="mt-1 text-sm text-gray-600">
@@ -593,7 +612,7 @@ function InvoicesPage() {
       )}
 
       {/* Populated state */}
-      {!loader.status && !isLoading && !isError && !isEmpty && (
+      {!loader.status && !isLoading && !loadFailed && !isEmpty && (
         <>
           {/* Metrics */}
           <div className="flex gap-8 border-b border-gray-200 pb-4 items-baseline">
