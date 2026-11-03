@@ -92,7 +92,13 @@ function DashboardPage() {
   const busy = summaryQuery.isPending || queueQuery.isPending;
   // Page-level wait: only while both requests are outstanding. Once either has
   // answered, the sections below handle their own skeletons and errors.
-  const loader = usePageLoader(summaryQuery.isPending && queueQuery.isPending, false);
+  const loader = usePageLoader(
+    summaryQuery.isPending && queueQuery.isPending,
+    false,
+    // No tick over a failure: if either request failed, show the sections (and
+    // their Retry alerts) straight away.
+    summaryQuery.isError || queueQuery.isError,
+  );
 
   return (
     <div aria-busy={busy || undefined}>

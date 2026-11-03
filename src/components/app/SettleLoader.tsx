@@ -147,7 +147,7 @@ export function SettleLoader({ status, size = 48, label, onExited, onRetry }: Se
       {state === "loading" && elapsed >= SLOW_MS && (
         <div className="ss-loader__msg ss-loader__slow">
           <p className="ss-loader__help">Still loading. This is taking longer than usual.</p>
-          {elapsed >= RETRY_MS && (
+          {elapsed >= RETRY_MS && onRetry && (
             <AppButton variant="text" type="button" onClick={onRetry}>
               Retry
             </AppButton>

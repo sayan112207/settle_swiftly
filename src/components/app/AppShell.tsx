@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { RouteLoader } from "@/components/app/RouteLoader";
 import { Toaster } from "@/components/ui/sonner";
@@ -68,7 +68,17 @@ export function AppShell({ user, orgName, children }: AppShellProps) {
   // and screen-reader users land on the content rather than the nav link they
   // pressed. Skipped when focus is already somewhere deliberate inside the page
   // (an autofocused field, the loader's own Retry): those win.
-  const focusPageHeading = useCallback(() => {
+  const focusWanted = useRef(false);
+  const requestHeadingFocus = useCallback(() => {
+    focusWanted.current = true;
+  }, []);
+
+  // Focus runs in an effect, not in the loader's onSettled callback: that
+  // callback fires before the render that lifts `inert` from the page, and
+  // an inert heading cannot take focus.
+  useEffect(() => {
+    if (loaderVisible || !focusWanted.current) return;
+    focusWanted.current = false;
     const main = mainRef.current;
     const active = document.activeElement;
     const focusIsNeutral = !active || active === document.body || !main?.contains(active);
@@ -78,7 +88,7 @@ export function AppShell({ user, orgName, children }: AppShellProps) {
     heading.tabIndex = -1;
     heading.focus({ preventScroll: true });
     heading.addEventListener("blur", () => heading.removeAttribute("tabindex"), { once: true });
-  }, []);
+  }, [loaderVisible]);
 
   // Sign-out lived in the old /app header that this shell replaced. It has to
   // live here instead: the shell is the only chrome left, so dropping it would
@@ -173,13 +183,15 @@ export function AppShell({ user, orgName, children }: AppShellProps) {
           min-w-0 is what lets the chase table's overflow-auto engage: a flex
           child defaults to min-width:auto, which would grow the page to the
           table's min-width instead of scrolling the table. */}
-      <main
-        ref={mainRef}
-        aria-busy={loaderVisible || undefined}
-        className="relative max-w-7xl min-w-0 flex-1 bg-page px-8 pt-6 pb-10"
-      >
-        {children}
-        <RouteLoader onVisibleChange={setLoaderVisible} onSettled={focusPageHeading} />
+      <main ref={mainRef} className="relative max-w-7xl min-w-0 flex-1 bg-page px-8 pt-6 pb-10">
+        {/* The page content, not <main>, is what is busy and inert while the
+            overlay covers it: the overlay's role="status" region must not sit
+            inside an aria-busy ancestor or its announcements can be held back,
+            and the controls underneath must not be reachable by Tab. */}
+        <div inert={loaderVisible} aria-busy={loaderVisible || undefined}>
+          {children}
+        </div>
+        <RouteLoader onVisibleChange={setLoaderVisible} onSettled={requestHeadingFocus} />
         <Toaster />
       </main>
     </div>

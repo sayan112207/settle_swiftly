@@ -115,7 +115,9 @@ export function nextRouteLoaderState(
     case "settled":
       return state.visible ? { visible: true, status: "done" } : state;
     case "exited":
-      return ROUTE_LOADER_IDLE;
+      // A late exit from a finished load must not hide the overlay once a new
+      // navigation has already moved it back to loading.
+      return state.status === "done" ? ROUTE_LOADER_IDLE : state;
     case "offline":
       return state.visible && state.status === "loading"
         ? { visible: true, status: "offline" }
@@ -135,6 +137,11 @@ export type PageLoaderInput = {
   wasShown: boolean;
   /** The done animation has finished and the loader has unmounted itself. */
   exited: boolean;
+  /**
+   * Skip the done/tick hold. For pages where a partial failure should show its
+   * own error straight away rather than behind a success mark.
+   */
+  skipDone?: boolean;
 };
 
 /**
@@ -147,6 +154,6 @@ export type PageLoaderInput = {
 export function pageLoaderStatus(input: PageLoaderInput): LoaderStatus | null {
   if (input.waiting) return "loading";
   if (input.failed) return "error";
-  if (input.wasShown && !input.exited) return "done";
+  if (input.wasShown && !input.exited && !input.skipDone) return "done";
   return null;
 }

@@ -9,9 +9,10 @@ import { pageLoaderStatus, type LoaderStatus } from "@/lib/settle-loader";
  * `onExited` callback to hand the loader. After a loader that was actually
  * shown, `done` is held until the tick has finished, so the page swaps in on
  * the loader's exit rather than cutting the tick off. Data that was already
- * cached on first render never shows the loader at all.
+ * cached on first render never shows the loader at all. `skipDone` drops the
+ * hold (and the tick) when part of the page failed.
  */
-export function usePageLoader(waiting: boolean, failed: boolean) {
+export function usePageLoader(waiting: boolean, failed: boolean, skipDone = false) {
   const [wasShown, setWasShown] = useState(waiting || failed);
   const [exited, setExited] = useState(false);
 
@@ -23,6 +24,12 @@ export function usePageLoader(waiting: boolean, failed: boolean) {
   }, [waiting, failed]);
 
   const onExited = useCallback(() => setExited(true), []);
-  const status: LoaderStatus | null = pageLoaderStatus({ waiting, failed, wasShown, exited });
+  const status: LoaderStatus | null = pageLoaderStatus({
+    waiting,
+    failed,
+    wasShown,
+    exited,
+    skipDone,
+  });
   return { status, onExited };
 }

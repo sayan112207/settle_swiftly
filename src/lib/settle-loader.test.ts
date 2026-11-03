@@ -139,6 +139,11 @@ describe("nextRouteLoaderState", () => {
     expect(state).toEqual({ visible: true, status: "loading" });
   });
 
+  test("a stale exit after a new navigation started does not hide the overlay", () => {
+    const state = run(["pending", "delay-elapsed", "settled", "pending", "exited"]);
+    expect(state).toEqual({ visible: true, status: "loading" });
+  });
+
   test("online with nothing offline is a no-op", () => {
     expect(run(["online"])).toEqual(ROUTE_LOADER_IDLE);
   });
@@ -158,6 +163,13 @@ describe("pageLoaderStatus", () => {
   test("data arriving after a shown loader holds done until it exits", () => {
     expect(pageLoaderStatus({ ...base, wasShown: true })).toBe("done");
     expect(pageLoaderStatus({ ...base, wasShown: true, exited: true })).toBeNull();
+  });
+
+  test("skipDone drops the tick hold when part of the page failed", () => {
+    expect(pageLoaderStatus({ ...base, wasShown: true, skipDone: true })).toBeNull();
+    expect(pageLoaderStatus({ ...base, waiting: true, wasShown: true, skipDone: true })).toBe(
+      "loading",
+    );
   });
 
   test("failure shows error, never done", () => {
