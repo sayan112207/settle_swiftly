@@ -21,6 +21,7 @@ const toneDefs = {
 type Tone = keyof typeof toneDefs;
 const tones = Object.keys(toneDefs) as Tone[];
 
+/** Interactive demo that previews a reminder in each tone. */
 export function ToneSelector() {
   const [tone, setTone] = useState<Tone>("gentle");
   const [typing, setTyping] = useState(false);
@@ -49,7 +50,7 @@ export function ToneSelector() {
           <span className="text-ink-soft">Firmer when needed.</span>
         </h2>
         <p className="mt-[18px] max-w-[400px] text-base leading-[1.6] text-ink-muted">
-          Choose the tone. Tagada writes and sends every follow-up.
+          Choose the tone. Settle Swiftly writes and sends every follow-up.
         </p>
 
         <div

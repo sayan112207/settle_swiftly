@@ -14,40 +14,225 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_cadence_steps: {
+        Row: {
+          account_id: string
+          channel: string
+          org_id: string
+          recipients: string
+          step_key: string
+          tone: string
+        }
+        Insert: {
+          account_id: string
+          channel: string
+          org_id: string
+          recipients: string
+          step_key: string
+          tone: string
+        }
+        Update: {
+          account_id?: string
+          channel?: string
+          org_id?: string
+          recipients?: string
+          step_key?: string
+          tone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_cadence_steps_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "account_cadence_steps_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "v_account_balances"
+            referencedColumns: ["account_id", "org_id"]
+          },
+          {
+            foreignKeyName: "account_cadence_steps_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accounts: {
         Row: {
+          archived_at: string | null
+          chase_mode: string
           created_at: string
           default_currency: string
+          detail_version: string
           id: string
+          is_msme: boolean
+          ladder_version: string
+          last_synced_at: string | null
           name: string
           name_normalized: string | null
           notes: string | null
           org_id: string
+          owner_user_id: string | null
+          p1_after_days: number
+          p2_after_days: number
+          pause_reason: string | null
+          paused_at: string | null
+          paused_until: string | null
+          send_window_closes: string | null
+          send_window_days: string[] | null
+          send_window_mode: string
+          send_window_opens: string | null
+          stop_note: string | null
+          stop_reason: string | null
+          tds_rate: number | null
+          tds_section: string
+          term_days: number
+          terms_preset: string
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
+          chase_mode?: string
           created_at?: string
           default_currency?: string
+          detail_version?: string
           id?: string
+          is_msme?: boolean
+          ladder_version?: string
+          last_synced_at?: string | null
           name: string
           name_normalized?: string | null
           notes?: string | null
           org_id: string
+          owner_user_id?: string | null
+          p1_after_days?: number
+          p2_after_days?: number
+          pause_reason?: string | null
+          paused_at?: string | null
+          paused_until?: string | null
+          send_window_closes?: string | null
+          send_window_days?: string[] | null
+          send_window_mode?: string
+          send_window_opens?: string | null
+          stop_note?: string | null
+          stop_reason?: string | null
+          tds_rate?: number | null
+          tds_section?: string
+          term_days?: number
+          terms_preset?: string
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
+          chase_mode?: string
           created_at?: string
           default_currency?: string
+          detail_version?: string
           id?: string
+          is_msme?: boolean
+          ladder_version?: string
+          last_synced_at?: string | null
           name?: string
           name_normalized?: string | null
           notes?: string | null
           org_id?: string
+          owner_user_id?: string | null
+          p1_after_days?: number
+          p2_after_days?: number
+          pause_reason?: string | null
+          paused_at?: string | null
+          paused_until?: string | null
+          send_window_closes?: string | null
+          send_window_days?: string[] | null
+          send_window_mode?: string
+          send_window_opens?: string | null
+          stop_note?: string | null
+          stop_reason?: string | null
+          tds_rate?: number | null
+          tds_section?: string
+          term_days?: number
+          terms_preset?: string
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "accounts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      activity_log: {
+        Row: {
+          account_id: string
+          actor_user_id: string | null
+          contact_id: string | null
+          detail: string
+          id: string
+          invoice_id: string | null
+          kind: string
+          link_href: string | null
+          link_label: string | null
+          occurred_at: string
+          org_id: string
+          title: string
+          tone: string
+        }
+        Insert: {
+          account_id: string
+          actor_user_id?: string | null
+          contact_id?: string | null
+          detail?: string
+          id?: string
+          invoice_id?: string | null
+          kind: string
+          link_href?: string | null
+          link_label?: string | null
+          occurred_at?: string
+          org_id: string
+          title: string
+          tone?: string
+        }
+        Update: {
+          account_id?: string
+          actor_user_id?: string | null
+          contact_id?: string | null
+          detail?: string
+          id?: string
+          invoice_id?: string | null
+          kind?: string
+          link_href?: string | null
+          link_label?: string | null
+          occurred_at?: string
+          org_id?: string
+          title?: string
+          tone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_log_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "activity_log_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "v_account_balances"
+            referencedColumns: ["account_id", "org_id"]
+          },
+          {
+            foreignKeyName: "activity_log_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "orgs"
@@ -631,13 +816,154 @@ export type Database = {
         }
         Relationships: []
       }
+      chase_alerts: {
+        Row: {
+          account_id: string
+          contact_id: string | null
+          created_at: string
+          id: string
+          invoice_id: string | null
+          kind: string
+          org_id: string
+          reason: string
+          reminder_id: string | null
+          resolution: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          to_email: string | null
+        }
+        Insert: {
+          account_id: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_id?: string | null
+          kind: string
+          org_id: string
+          reason: string
+          reminder_id?: string | null
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          to_email?: string | null
+        }
+        Update: {
+          account_id?: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_id?: string | null
+          kind?: string
+          org_id?: string
+          reason?: string
+          reminder_id?: string | null
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          to_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chase_alerts_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "chase_alerts_account_fk"
+            columns: ["account_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "v_account_balances"
+            referencedColumns: ["account_id", "org_id"]
+          },
+          {
+            foreignKeyName: "chase_alerts_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chase_alerts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chase_alerts_reminder_id_fkey"
+            columns: ["reminder_id"]
+            isOneToOne: false
+            referencedRelation: "reminders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chase_requests: {
+        Row: {
+          id: string
+          invoice_id: string
+          org_id: string
+          requested_at: string
+          requested_by: string
+        }
+        Insert: {
+          id?: string
+          invoice_id: string
+          org_id: string
+          requested_at?: string
+          requested_by: string
+        }
+        Update: {
+          id?: string
+          invoice_id?: string
+          org_id?: string
+          requested_at?: string
+          requested_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chase_requests_invoice_fk"
+            columns: ["invoice_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "chase_requests_invoice_fk"
+            columns: ["invoice_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "v_invoice_aging"
+            referencedColumns: ["invoice_id", "org_id"]
+          },
+          {
+            foreignKeyName: "chase_requests_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contacts: {
         Row: {
           account_id: string
+          always_cc: boolean
+          channel_email: boolean
+          channel_sms: boolean
+          channel_whatsapp: boolean
           created_at: string
+          delivery_state: Database["public"]["Enums"]["delivery_state"]
+          designation: string | null
+          dnc_reason: string | null
+          do_not_contact: boolean
           email: string | null
           id: string
           is_active: boolean
+          language: string
+          last_bounced_at: string | null
+          last_contacted_at: string | null
           name: string
           org_id: string
           phone: string | null
@@ -645,14 +971,26 @@ export type Database = {
             | Database["public"]["Enums"]["contact_channel"]
             | null
           priority: Database["public"]["Enums"]["contact_priority"]
+          sort_order: number
           updated_at: string
         }
         Insert: {
           account_id: string
+          always_cc?: boolean
+          channel_email?: boolean
+          channel_sms?: boolean
+          channel_whatsapp?: boolean
           created_at?: string
+          delivery_state?: Database["public"]["Enums"]["delivery_state"]
+          designation?: string | null
+          dnc_reason?: string | null
+          do_not_contact?: boolean
           email?: string | null
           id?: string
           is_active?: boolean
+          language?: string
+          last_bounced_at?: string | null
+          last_contacted_at?: string | null
           name: string
           org_id: string
           phone?: string | null
@@ -660,14 +998,26 @@ export type Database = {
             | Database["public"]["Enums"]["contact_channel"]
             | null
           priority?: Database["public"]["Enums"]["contact_priority"]
+          sort_order?: number
           updated_at?: string
         }
         Update: {
           account_id?: string
+          always_cc?: boolean
+          channel_email?: boolean
+          channel_sms?: boolean
+          channel_whatsapp?: boolean
           created_at?: string
+          delivery_state?: Database["public"]["Enums"]["delivery_state"]
+          designation?: string | null
+          dnc_reason?: string | null
+          do_not_contact?: boolean
           email?: string | null
           id?: string
           is_active?: boolean
+          language?: string
+          last_bounced_at?: string | null
+          last_contacted_at?: string | null
           name?: string
           org_id?: string
           phone?: string | null
@@ -675,6 +1025,7 @@ export type Database = {
             | Database["public"]["Enums"]["contact_channel"]
             | null
           priority?: Database["public"]["Enums"]["contact_priority"]
+          sort_order?: number
           updated_at?: string
         }
         Relationships: [
@@ -701,19 +1052,157 @@ export type Database = {
           },
         ]
       }
+      email_callbacks: {
+        Row: {
+          dedupe_key: string
+          event: string
+          id: string
+          occurred_at: string | null
+          org_id: string | null
+          payload: Json
+          processed_at: string | null
+          provider: string
+          provider_event_id: string | null
+          provider_message_id: string | null
+          received_at: string
+          send_id: string | null
+          to_email: string | null
+        }
+        Insert: {
+          dedupe_key: string
+          event: string
+          id?: string
+          occurred_at?: string | null
+          org_id?: string | null
+          payload: Json
+          processed_at?: string | null
+          provider?: string
+          provider_event_id?: string | null
+          provider_message_id?: string | null
+          received_at?: string
+          send_id?: string | null
+          to_email?: string | null
+        }
+        Update: {
+          dedupe_key?: string
+          event?: string
+          id?: string
+          occurred_at?: string | null
+          org_id?: string | null
+          payload?: Json
+          processed_at?: string | null
+          provider?: string
+          provider_event_id?: string | null
+          provider_message_id?: string | null
+          received_at?: string
+          send_id?: string | null
+          to_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_callbacks_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_callbacks_send_id_fkey"
+            columns: ["send_id"]
+            isOneToOne: false
+            referencedRelation: "email_sends"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_sends: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          org_id: string | null
+          provider: string
+          provider_message_id: string | null
+          purpose: Database["public"]["Enums"]["email_purpose"]
+          reminder_id: string | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["email_send_status"]
+          subject: string | null
+          to_email: string
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          org_id?: string | null
+          provider?: string
+          provider_message_id?: string | null
+          purpose: Database["public"]["Enums"]["email_purpose"]
+          reminder_id?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["email_send_status"]
+          subject?: string | null
+          to_email: string
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          org_id?: string | null
+          provider?: string
+          provider_message_id?: string | null
+          purpose?: Database["public"]["Enums"]["email_purpose"]
+          reminder_id?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["email_send_status"]
+          subject?: string | null
+          to_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_sends_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sends_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sends_reminder_id_fkey"
+            columns: ["reminder_id"]
+            isOneToOne: false
+            referencedRelation: "reminders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoices: {
         Row: {
           account_id: string
           amount: number
           created_at: string
           currency: string
+          disputed_at: string | null
           due_date: string
           external_ref: string | null
           id: string
           invoice_number: string
           invoice_number_normalized: string | null
           issue_date: string
+          last_promise_broken_at: string | null
           org_id: string
+          promise_broken_count: number
+          promised_at: string | null
+          promised_date: string | null
           status: Database["public"]["Enums"]["invoice_status"]
           updated_at: string
         }
@@ -722,13 +1211,18 @@ export type Database = {
           amount: number
           created_at?: string
           currency?: string
+          disputed_at?: string | null
           due_date: string
           external_ref?: string | null
           id?: string
           invoice_number: string
           invoice_number_normalized?: string | null
           issue_date?: string
+          last_promise_broken_at?: string | null
           org_id: string
+          promise_broken_count?: number
+          promised_at?: string | null
+          promised_date?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           updated_at?: string
         }
@@ -737,13 +1231,18 @@ export type Database = {
           amount?: number
           created_at?: string
           currency?: string
+          disputed_at?: string | null
           due_date?: string
           external_ref?: string | null
           id?: string
           invoice_number?: string
           invoice_number_normalized?: string | null
           issue_date?: string
+          last_promise_broken_at?: string | null
           org_id?: string
+          promise_broken_count?: number
+          promised_at?: string | null
+          promised_date?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           updated_at?: string
         }
@@ -806,6 +1305,7 @@ export type Database = {
           created_by: string | null
           id: string
           name: string
+          timezone: string
           updated_at: string
         }
         Insert: {
@@ -813,6 +1313,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           name: string
+          timezone?: string
           updated_at?: string
         }
         Update: {
@@ -820,6 +1321,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           name?: string
+          timezone?: string
           updated_at?: string
         }
         Relationships: []
@@ -1000,7 +1502,9 @@ export type Database = {
       }
       reminders: {
         Row: {
+          cancel_reason: string | null
           channel: Database["public"]["Enums"]["contact_channel"]
+          claimed_at: string | null
           created_at: string
           id: string
           invoice_id: string
@@ -1012,7 +1516,9 @@ export type Database = {
           tone: Database["public"]["Enums"]["reminder_tone"]
         }
         Insert: {
+          cancel_reason?: string | null
           channel: Database["public"]["Enums"]["contact_channel"]
+          claimed_at?: string | null
           created_at?: string
           id?: string
           invoice_id: string
@@ -1024,7 +1530,9 @@ export type Database = {
           tone: Database["public"]["Enums"]["reminder_tone"]
         }
         Update: {
+          cancel_reason?: string | null
           channel?: Database["public"]["Enums"]["contact_channel"]
+          claimed_at?: string | null
           created_at?: string
           id?: string
           invoice_id?: string
@@ -1149,6 +1657,86 @@ export type Database = {
       }
     }
     Functions: {
+      account_archive: {
+        Args: { p_account: string; p_confirm_name: string; p_if_match: string }
+        Returns: undefined
+      }
+      account_contact_create: {
+        Args: { p_account: string; p_body: Json; p_if_match: string }
+        Returns: undefined
+      }
+      account_contact_delete: {
+        Args: { p_account: string; p_contact: string; p_if_match: string }
+        Returns: undefined
+      }
+      account_contact_update: {
+        Args: {
+          p_account: string
+          p_body: Json
+          p_contact: string
+          p_if_match: string
+        }
+        Returns: undefined
+      }
+      account_pause: {
+        Args: {
+          p_account: string
+          p_if_match: string
+          p_reason: string
+          p_until: string
+        }
+        Returns: undefined
+      }
+      account_restore: {
+        Args: { p_account: string; p_if_match: string }
+        Returns: undefined
+      }
+      account_resume: {
+        Args: { p_account: string; p_if_match: string }
+        Returns: undefined
+      }
+      account_update_chasing_settings: {
+        Args: { p_account: string; p_body: Json; p_if_match: string }
+        Returns: undefined
+      }
+      account_update_escalation: {
+        Args: {
+          p_account: string
+          p_if_match: string
+          p_p1_after_days: number
+          p_p2_after_days: number
+        }
+        Returns: undefined
+      }
+      accounts_ensure: {
+        Args: { p_names: string[]; p_org: string }
+        Returns: {
+          account_id: string
+          account_name: string
+          requested_name: string
+          was_created: boolean
+        }[]
+      }
+      chase_alert_dismiss: { Args: { p_alert: string }; Returns: undefined }
+      chase_alert_raise: {
+        Args: {
+          p_contact: string
+          p_kind: string
+          p_reason: string
+          p_reminder?: string
+          p_to_email?: string
+        }
+        Returns: boolean
+      }
+      chase_reminder_cancel: { Args: { p_reminder: string }; Returns: boolean }
+      chase_reminder_settle: {
+        Args: {
+          p_reason?: string
+          p_reminder: string
+          p_status: Database["public"]["Enums"]["reminder_status"]
+        }
+        Returns: undefined
+      }
       create_org: {
         Args: { p_name: string }
         Returns: {
@@ -1156,6 +1744,7 @@ export type Database = {
           created_by: string | null
           id: string
           name: string
+          timezone: string
           updated_at: string
         }
         SetofOptions: {
@@ -1165,15 +1754,34 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      email_callbacks_link: { Args: never; Returns: number }
+      email_callbacks_sweep_unmatched: {
+        Args: { p_older_than?: string }
+        Returns: number
+      }
+      email_delivery_apply: {
+        Args: {
+          p_callback_ids: string[]
+          p_contact: string
+          p_last_bounced?: string
+          p_state: Database["public"]["Enums"]["delivery_state"]
+        }
+        Returns: undefined
+      }
+      reconcile_broken_promises: { Args: { p_org: string }; Returns: number }
       schedule_reminder: {
         Args: {
           p_channel: Database["public"]["Enums"]["contact_channel"]
           p_invoice_id: string
-          p_scheduled_for?: string
+          p_recipients: string
+          p_scheduled_for: string
+          p_step: number
           p_tone: Database["public"]["Enums"]["reminder_tone"]
         }
         Returns: {
+          cancel_reason: string | null
           channel: Database["public"]["Enums"]["contact_channel"]
+          claimed_at: string | null
           created_at: string
           id: string
           invoice_id: string
@@ -1195,6 +1803,9 @@ export type Database = {
     Enums: {
       contact_channel: "email" | "whatsapp" | "sms"
       contact_priority: "P0" | "P1" | "P2"
+      delivery_state: "verified" | "unverified" | "bounced"
+      email_purpose: "reminder" | "verification"
+      email_send_status: "queued" | "sent" | "failed"
       invoice_status:
         | "draft"
         | "open"
@@ -1220,12 +1831,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1249,11 +1860,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1274,11 +1885,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1299,11 +1910,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1316,11 +1927,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1334,6 +1945,9 @@ export const Constants = {
     Enums: {
       contact_channel: ["email", "whatsapp", "sms"],
       contact_priority: ["P0", "P1", "P2"],
+      delivery_state: ["verified", "unverified", "bounced"],
+      email_purpose: ["reminder", "verification"],
+      email_send_status: ["queued", "sent", "failed"],
       invoice_status: [
         "draft",
         "open",

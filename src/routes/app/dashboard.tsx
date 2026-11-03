@@ -176,11 +176,12 @@ function TileRow({ summary }: { summary: DashboardSummary | null }) {
   );
 }
 
+/** Needs your attention: each count links to the list that fixes it. */
 function AttentionRow({ summary }: { summary: DashboardSummary }) {
   return (
     <section className="mt-8">
       <h2 className="mb-4 text-section font-bold tracking-tight text-fg">Needs your attention</h2>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <MetricTile
           to="/app/accounts"
           search={{ filter: "missing_contacts" }}
@@ -199,6 +200,16 @@ function AttentionRow({ summary }: { summary: DashboardSummary }) {
           value={String(summary.attention.promises_broken_this_week)}
           subline="promises broken this week"
         />
+        <MetricTile
+          to="/app/chasing/outbox"
+          search={{ view: "attention" }}
+          value={String(summary.attention.delivery_alerts_open)}
+          subline={
+            summary.attention.delivery_alerts_open === 1
+              ? "delivery alert to review"
+              : "delivery alerts to review"
+          }
+        />
       </div>
     </section>
   );
@@ -207,7 +218,7 @@ function AttentionRow({ summary }: { summary: DashboardSummary }) {
 /**
  * Spec §6 enumerates three skeleton regions. The attention strip is not in
  * that list, but omitting it would drop the Chase now block by a card-row when
- * data arrives, which is the layout shift the same paragraph forbids. Three
+ * data arrives, which is the layout shift the same paragraph forbids. Four
  * card skeletons occupy the strip's final size; they are not extra chrome.
  */
 function SummarySkeletons() {
@@ -228,7 +239,8 @@ function SummarySkeletons() {
       </section>
       <section className="mt-8">
         <h2 className="mb-4 text-section font-bold tracking-tight text-fg">Needs your attention</h2>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          <TileSkeleton eyebrow={false} />
           <TileSkeleton eyebrow={false} />
           <TileSkeleton eyebrow={false} />
           <TileSkeleton eyebrow={false} />

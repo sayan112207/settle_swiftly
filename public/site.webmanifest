@@ -1,0 +1,15 @@
+{
+  "name": "Settle Swiftly",
+  "short_name": "Settle Swiftly",
+  "description": "Send the invoice. We chase the payment.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "browser",
+  "theme_color": "#087A52",
+  "background_color": "#FCFCFA",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

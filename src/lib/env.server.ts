@@ -6,8 +6,8 @@
  * security policy in the database.
  *
  * Read lazily rather than at module load: an eager throw would take down the
- * whole SSR render, including the marketing page, over a secret only the
- * waitlist path actually needs. The failure still surfaces immediately, at the
+ * whole SSR render, including the marketing page, over a secret that only
+ * server-side system jobs need. The failure still surfaces immediately, at the
  * first call that depends on it, with a message that names the variable.
  */
 
@@ -31,7 +31,49 @@ function requireServerEnv(name: string): string {
   return value;
 }
 
-/** Bypasses all RLS. Only for paths with no signed-in user, e.g. the waitlist. */
+/** Bypasses all RLS. Only for paths with no signed-in user, e.g. system jobs. */
 export function getServiceRoleKey(): string {
   return requireServerEnv("SUPABASE_SERVICE_ROLE_KEY");
+}
+
+/**
+ * The bearer token Supabase Cron presents to `/api/v1/internal/*`.
+ *
+ * The database's copy lives in Vault as `cron_secret`; this is the app's copy
+ * of the same value. The two must match, so rotation updates both — see
+ * README → Scheduled jobs.
+ */
+export function getCronSecret(): string {
+  return requireServerEnv("CRON_SECRET");
+}
+
+/**
+ * SMTP2GO, which sends the chase reminders. Travels as the
+ * `X-Smtp2go-Api-Key` header — never as the `api_key` body field the API also
+ * accepts, because a body is what gets logged when a request is traced.
+ */
+export function getSmtp2goApiKey(): string {
+  return requireServerEnv("SMTP2GO_API_KEY");
+}
+
+/**
+ * SMTP2GO's API root, overridable because the service also serves regional
+ * hosts. Not `requireServerEnv`: a default that works for most accounts is
+ * better than a variable every deployment has to set identically.
+ */
+export function getSmtp2goApiBase(): string {
+  return readServerEnv("SMTP2GO_API_BASE") ?? "https://api.smtp2go.com/v3";
+}
+
+/**
+ * The address reminders are sent from. Must be a Verified Sender at the
+ * provider, or every send is refused.
+ *
+ * One address for the whole deployment, with each org's name as the From
+ * *name* — see `senderHeader`. Per-org sending addresses would mean every
+ * customer verifying their own domain before they could chase anybody, which
+ * is a setup wall in front of the product's first useful action.
+ */
+export function getReminderSenderEmail(): string {
+  return requireServerEnv("SMTP2GO_SENDER_EMAIL");
 }

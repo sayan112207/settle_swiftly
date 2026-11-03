@@ -102,6 +102,24 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Native controls in the import flow share the app's compact input treatment.
+   The shadcn primitives retain their own defaults for non-app screens. */
+.app-shell .field {
+  width: 100%;
+  border: 1px solid var(--color-stroke);
+  border-radius: var(--radius-input);
+  background: var(--color-card);
+  padding: 8px 12px;
+  color: var(--color-fg);
+  font-size: var(--text-body);
+  font-weight: 400;
+}
+
+.app-shell .field:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* Mandatory on every focusable element inside the app.
    `outline: none` may not appear anywhere in app code. */
 .app-shell :focus-visible {

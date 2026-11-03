@@ -45,6 +45,16 @@ supabase/.env
 .claude/
 .cursor/
 
+# CodeRabbit skills, fetched from coderabbitai/skills into per-tool directories.
+# Ignored with the rest of the assistant config rather than tracked as a
+# lockfile would normally be: skills-lock.json only pins content that is itself
+# ignored here, and which reviewer each person runs locally is their business.
+# Track the lock instead if the team ever needs everyone on identical skill
+# versions — the directories stay ignored either way, being fetched output.
+.agents/
+.aider-desk/
+skills-lock.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

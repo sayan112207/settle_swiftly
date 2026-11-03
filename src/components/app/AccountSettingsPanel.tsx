@@ -10,7 +10,12 @@ import {
   useResumeAccount,
   useUpdateChasingSettings,
 } from "@/lib/queries/account-detail";
-import { chaseStopReasonSchema, tdsSectionSchema, weekdaySchema } from "@/lib/schemas/accounts";
+import {
+  CHASING_NOT_SET_UP,
+  chaseStopReasonSchema,
+  tdsSectionSchema,
+  weekdaySchema,
+} from "@/lib/schemas/accounts";
 import type {
   AccountDetail,
   CadenceStep,
@@ -55,6 +60,7 @@ function formatTime(value: string) {
   return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
+/** The Settings tab: cadence, send window, terms, ownership and archive. Locked while paused, archived, or for non-admins. */
 export function AccountSettingsPanel({ accountId, detail }: Props) {
   const s = detail.settings;
   const navigate = accountDetailRoute.useNavigate();
@@ -63,6 +69,16 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
   const [steps, setSteps] = useState<CadenceStep[]>(s.steps);
   const [stopReason, setStopReason] = useState<ChaseStopReason | "">(s.stop_reason ?? "");
   const [stopNote, setStopNote] = useState(s.stop_note ?? "");
+
+  /**
+   * Picks a cadence that chases. The system's "Not set up yet" is dropped on
+   * the way out of "Don't chase": the picker hides it, so stopping again
+   * must not quietly resubmit it — it needs a reason someone chose.
+   */
+  function chooseChasing(next: "default" | "custom") {
+    setMode(next);
+    if (stopReason === CHASING_NOT_SET_UP) setStopReason("");
+  }
   const [windowMode, setWindowMode] = useState(s.send_window_mode);
   const [opensAt, setOpensAt] = useState(s.send_window.opens_at);
   const [closesAt, setClosesAt] = useState(s.send_window.closes_at);
@@ -87,9 +103,11 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
   const save = useUpdateChasingSettings(accountId);
   const resume = useResumeAccount(accountId);
 
-  const isPaused = s.archived_at === null && s.paused_at !== null;
+  const isArchived = s.archived_at !== null;
+  const isPaused = !isArchived && s.paused_at !== null;
   const canEdit = s.can_edit;
-  const locked = isPaused || !canEdit;
+  // An archived account is read-only until restored (the page banner has Restore).
+  const locked = isArchived || isPaused || !canEdit;
 
   const defaultByKey = useMemo(
     () => Object.fromEntries(s.default_steps.map((d) => [d.key, d])),
@@ -236,6 +254,13 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
                 </span>
               ) : null}
             </div>
+            {/* Not while paused: the form is locked, and Resume is the way on. */}
+            {!isPaused && s.chase_mode === "stopped" && s.stop_reason === CHASING_NOT_SET_UP ? (
+              <p className="mt-2 text-body text-fg-muted">
+                Chasing is off for this account until you turn it on. Check its contacts, then
+                choose a cadence below and save.
+              </p>
+            ) : null}
 
             <fieldset className="mt-4 border-0 p-0">
               <legend className="sr-only">Chasing cadence for {detail.name}</legend>
@@ -243,7 +268,7 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
                 <ModeOption
                   name="chase-mode"
                   checked={mode === "default"}
-                  onSelect={() => setMode("default")}
+                  onSelect={() => chooseChasing("default")}
                   title="Use the default cadence"
                   description={s.default_summary}
                   disabled={locked}
@@ -251,7 +276,7 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
                 <ModeOption
                   name="chase-mode"
                   checked={mode === "custom"}
-                  onSelect={() => setMode("custom")}
+                  onSelect={() => chooseChasing("custom")}
                   title="Use a different cadence for this account"
                   description="Starts from the default. Edit only the steps you need."
                   disabled={locked}
@@ -332,7 +357,10 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
                     }`}
                   >
                     <option value="">Select a reason</option>
-                    {STOP_REASONS.map((r) => (
+                    {/* "Not set up yet" is the system's reason, offered only while it is the saved one. */}
+                    {STOP_REASONS.filter(
+                      (r) => r !== CHASING_NOT_SET_UP || s.stop_reason === CHASING_NOT_SET_UP,
+                    ).map((r) => (
                       <option key={r} value={r}>
                         {r}
                       </option>
@@ -695,18 +723,24 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
       </div>
 
       {/* ── Danger zone ───────────────────────────────────────────────── */}
-      <section className="rounded-card border border-danger-edge bg-card p-5">
-        <h2 className="text-section font-bold tracking-tight text-danger">Danger zone</h2>
-        <p className="mt-2 text-prose font-normal text-fg-soft">
-          Stops every reminder and moves this account out of your working list. Invoices and history
-          are kept.
-        </p>
-        <div className="mt-3">
-          <AppButton variant="destructive" disabled={!canEdit} onClick={() => setArchiveOpen(true)}>
-            Stop all chasing and archive this account
-          </AppButton>
-        </div>
-      </section>
+      {isArchived ? null : (
+        <section className="rounded-card border border-danger-edge bg-card p-5">
+          <h2 className="text-section font-bold tracking-tight text-danger">Danger zone</h2>
+          <p className="mt-2 text-prose font-normal text-fg-soft">
+            Stops every reminder and moves this account to Accounts → Archived, out of your totals.
+            Invoices and history are kept, and you can restore it at any time.
+          </p>
+          <div className="mt-3">
+            <AppButton
+              variant="destructive"
+              disabled={!canEdit}
+              onClick={() => setArchiveOpen(true)}
+            >
+              Stop all chasing and archive this account
+            </AppButton>
+          </div>
+        </section>
+      )}
 
       <ArchiveDialog
         open={archiveOpen}
@@ -878,6 +912,7 @@ function TimeSelect({
   );
 }
 
+/** Confirms archiving by making the user type the account name; the server re-checks it. */
 function ArchiveDialog({
   open,
   onOpenChange,
@@ -902,7 +937,8 @@ function ArchiveDialog({
         </DialogTitle>
         <DialogDescription className="mt-2 text-prose font-normal text-fg-soft">
           {formatINR(detail.outstanding)} is still outstanding on this account. Archiving stops all
-          chasing. Type <span className="font-semibold text-fg">{target}</span> to confirm.
+          chasing and takes it out of your totals until you restore it. Type{" "}
+          <span className="font-semibold text-fg">{target}</span> to confirm.
         </DialogDescription>
 
         <label htmlFor="archive-confirm" className="sr-only">

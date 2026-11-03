@@ -32,24 +32,30 @@ const VARIANT_CLASSES: Record<AppButtonVariant, string> = {
   destructive: "bg-danger text-white",
 };
 
-type AppButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> & {
+type AppButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: AppButtonVariant;
   loading?: boolean;
   children: ReactNode;
 };
 
+/** The app's button in one of four variants, with a loading state that keeps its width. */
 export function AppButton({
   variant = "primary",
   loading = false,
   disabled = false,
+  type = "button",
   className,
   children,
   ...props
 }: AppButtonProps) {
   return (
     <button
-      // Always explicit: an unspecified button inside a form submits it.
-      type="button"
+      // Defaulted rather than fixed. The default is still "button", because an
+      // unspecified button inside a form submits it — but a form's own submit
+      // button has to be able to say so. Pinning this to "button" silently
+      // broke the one form that used AppButton to submit: the click did
+      // nothing, and nothing anywhere said why.
+      type={type}
       // A loading button must not be clickable twice, so the disabled state is
       // derived rather than left to the caller to remember.
       disabled={disabled || loading}

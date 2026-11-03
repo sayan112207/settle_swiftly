@@ -7,7 +7,7 @@ editor-specific directory.
 
 ---
 
-## Tagada
+## Settle Swiftly
 
 A B2B collections tool. Small businesses import their unpaid invoices and the
 product chases the customers who owe them money. It sits on top of Tally and
@@ -54,10 +54,12 @@ see the migration noted alongside._
   → `app.normalize_account_name()`, foundation migration
 - Unique constraint: `(orgId, accountId, invoiceNumberNormalized)`.
   → `invoices_org_account_number_uniq`
-- An account needs exactly one P0 contact before it can be chased. P1 and P2
-  are optional.
-  → at-most-one via the `contacts_one_active_p0_per_account` partial unique
-  index; at-least-one is gated in `public.schedule_reminder()`
+- An account needs at least one usable P0 contact (active, not do-not-contact)
+  before it can be chased. Several contacts may share a tier, P0 included —
+  two AP staff can both receive the P0 message. P1 and P2 are optional.
+  → gated in `public.schedule_reminder()`; the last usable P0 cannot be
+  removed, marked do-not-contact or moved off P0 (`last_p0_required` in the
+  `account_contact_*` RPCs)
 - Escalation is cumulative, not a handoff — P0 stays in the thread when P1
   joins.
   → `reminder_recipients` fan-out in `schedule_reminder()`
@@ -120,8 +122,10 @@ these tokens (`bg-surface`, `text-ink-muted`, `border-line`, `bg-brand`).
 - System font stack via `--font-sans`. Weights 400, 600, 650 only.
 - Section heading 40/650/-0.02em. Hero clamp(38px, 8vw, 68px)/650/-0.03em.
   Body 14-16/400. Label 11-12/700/uppercase/0.08em/`--ink-faint`. Metric 32/650.
-- Currency: `Intl.NumberFormat('en-IN')` for INR — lakh grouping (₹4,82,000),
-  not thousands. Never abbreviate in tables.
+- Currency: `Intl.NumberFormat('en-IN')` for INR — lakh grouping
+  (₹4,82,000.00), not thousands. Always two decimal places, whole amounts
+  included, so money columns stay aligned and paise are never rounded away.
+  Never abbreviate in tables.
 - Cards: 16-20px radius, 1px `--line` border, one soft shadow
   (`--shadow-card` / `--shadow-raised`). Pills and tabs are fully rounded.
 - Content max-width 1000-1280px depending on section, 32px horizontal padding.
@@ -148,7 +152,7 @@ exists purely to fill space.
 - All tables use TanStack Table.
 - Every list: priority order is the default sort. Show active filters as
   removable chips, and always display the filtered count and summed amount
-  (e.g. "47 invoices · ₹18,40,000").
+  (e.g. "47 invoices · ₹18,40,000.00").
 - Bulk action buttons state the count: "Snooze 47 invoices", never "Snooze all".
 - No dead clicks. Every button either works, opens an explanatory popover, or is
   disabled with a tooltip.

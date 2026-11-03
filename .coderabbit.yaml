@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# The docstring threshold is pinned here so the bot and CI hold the same bar.
+# `bun run docstrings` is the enforcing copy — it runs on every PR, fails the
+# build, and can be reproduced locally. This entry keeps CodeRabbit's reading of
+# the same rule from drifting to a different default.
+reviews:
+  auto_review:
+    # Only the default branch is reviewed unless it is named here, and the
+    # default moved to `develop` when the release flow landed. Listing both
+    # keeps reviews running on integration *and* release PRs, and keeps working
+    # if the default moves again.
+    base_branches:
+      - main
+      - develop
+
+  pre_merge_checks:
+    docstrings:
+      # Left at `warning`, not `error`: two different parsers will occasionally
+      # disagree on what counts as a function, and a blocking check whose number
+      # cannot be reproduced locally is a check nobody can clear. CI is the gate;
+      # this is the second opinion.
+      mode: warning
+      threshold: 80

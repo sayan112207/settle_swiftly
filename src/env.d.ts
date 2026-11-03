@@ -13,6 +13,7 @@ interface ImportMetaEnv {
    * exactly "true" or "false". Absent means mocks off.
    */
   readonly VITE_USE_MOCKS?: string;
+  readonly VITE_USE_ACCOUNTS_MOCKS?: string;
 }
 
 interface ImportMeta {

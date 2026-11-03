@@ -30,12 +30,23 @@ const publicEnvSchema = z.object({
     })
     .optional()
     .default("false"),
+  /**
+   * Accounts-only override. The dashboard has a real `/api/v1` backend; the
+   * accounts endpoints do not yet, so their screens can stay on fixtures while
+   * the dashboard talks to the API. Unset means "same as VITE_USE_MOCKS".
+   */
+  VITE_USE_ACCOUNTS_MOCKS: z
+    .enum(["true", "false"], {
+      errorMap: () => ({ message: 'VITE_USE_ACCOUNTS_MOCKS must be exactly "true" or "false"' }),
+    })
+    .optional(),
 });
 
 export type PublicEnv = {
   readonly supabaseUrl: string;
   readonly supabaseAnonKey: string;
   readonly useMocks: boolean;
+  readonly useAccountsMocks: boolean;
 };
 
 let cached: PublicEnv | undefined;
@@ -47,6 +58,7 @@ export function getPublicEnv(): PublicEnv {
     VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
     VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
     VITE_USE_MOCKS: import.meta.env.VITE_USE_MOCKS,
+    VITE_USE_ACCOUNTS_MOCKS: import.meta.env.VITE_USE_ACCOUNTS_MOCKS,
   });
 
   if (!parsed.success) {
@@ -61,6 +73,8 @@ export function getPublicEnv(): PublicEnv {
     supabaseUrl: parsed.data.VITE_SUPABASE_URL,
     supabaseAnonKey: parsed.data.VITE_SUPABASE_ANON_KEY,
     useMocks: parsed.data.VITE_USE_MOCKS === "true",
+    useAccountsMocks:
+      (parsed.data.VITE_USE_ACCOUNTS_MOCKS ?? parsed.data.VITE_USE_MOCKS) === "true",
   };
   return cached;
 }

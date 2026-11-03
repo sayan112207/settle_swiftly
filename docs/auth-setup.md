@@ -37,7 +37,7 @@ that can only be created in the Google Cloud and Supabase dashboards.
 >
 > | Page                    | Purpose                                                                                      |
 > | ----------------------- | -------------------------------------------------------------------------------------------- |
-> | **OAuth Server**        | Makes _this project_ an identity provider, so **other** apps can offer "Sign in with Tagada" |
+> | **OAuth Server**        | Makes _this project_ an identity provider, so **other** apps can offer "Sign in with Settle Swiftly" |
 > | **Sign In / Providers** | Lets **this app** accept "Sign in with Google" ← what we want                                |
 >
 > Enabling the OAuth Server publishes authorize/consent endpoints we do not

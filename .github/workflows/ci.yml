@@ -1,0 +1,92 @@
+# Every gate that has to pass before a change reaches `develop`, and every gate
+# that has to pass again before `develop` reaches `main`.
+#
+# These are the same four commands a developer runs locally. Keeping them
+# identical is deliberate: a check that only exists in CI is one nobody can
+# reproduce when it fails.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  # Also on push, so the branch itself carries a status — a PR from `develop` to
+  # `main` shows a green tick earned by the merge commit, not only by the PRs
+  # that fed into it.
+  push:
+    branches: [develop, main]
+
+# A new push to a PR makes the previous run irrelevant. Cancel it rather than
+# pay for it, but never cancel a run on `develop` or `main` themselves: those
+# statuses are what the release PR reads.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # `main` takes changes from `develop` and nowhere else. GitHub has no native
+  # rule for the *source* of a pull request — branch protection governs who may
+  # push and what must pass, not where a PR came from — so the constraint is
+  # enforced here and made a required check on `main`.
+  source-branch:
+    name: source branch
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: main accepts pull requests from develop only
+        # Through the environment rather than inline `${{ }}`: a branch name is
+        # attacker-controlled text and would otherwise be pasted into the shell.
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          if [ "$BASE" = "main" ] && [ "$HEAD" != "develop" ]; then
+            echo "::error::main only accepts pull requests from develop. This one is from '$HEAD'. Merge it into develop first, then open a release PR."
+            exit 1
+          fi
+          echo "ok: $HEAD -> $BASE"
+
+  verify:
+    name: typecheck · lint · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # Full history: the docstring gate diffs against the merge base with the
+      # target branch, which a shallow clone does not contain.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # --frozen-lockfile so CI fails on a lockfile that drifted from
+      # package.json instead of quietly resolving something else.
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Test
+        run: bun test
+
+      # The build is a real gate, not a formality: it is the only step that
+      # exercises SSR bundling, and it needs no env vars — the app validates
+      # its environment at first use, not at build time.
+      - name: Build
+        run: bun run build
+
+      # Settles the docstring number here, where it can be reproduced with one
+      # command, instead of leaving it to arrive as a review comment.
+      - name: Docstrings
+        if: github.event_name == 'pull_request'
+        run: bun run docstrings ${{ github.base_ref }}

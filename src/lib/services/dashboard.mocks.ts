@@ -77,6 +77,8 @@ export const summaryFixture: DashboardSummary = {
     // DECISION: the third attention item is broken promises, not payments
     // awaiting triage — Payments does not exist in this build.
     promises_broken_this_week: 3,
+    // Matches the Outbox fixture's open alerts, which the tile links to.
+    delivery_alerts_open: 1,
   },
 };
 
@@ -209,7 +211,7 @@ export const longAccountNameChaseQueueFixture: ChaseQueue = {
 };
 
 /**
- * Spec §6 "Overflow": ₹4,20,00,000 must not wrap or clip inside its tile.
+ * Spec §6 "Overflow": ₹4,20,00,000.00 must not wrap or clip inside its tile.
  * Segments still sum to the total; the invariant does not get a holiday
  * because the number is large.
  */

@@ -4,12 +4,14 @@ import { toast } from "sonner";
 import type {
   AccountContact,
   AccountContacts,
+  CreateContactBody,
   UpdateContactBody,
   UpdateEscalationBody,
 } from "@/lib/schemas/accounts";
 import {
   AccountsApiError,
   accountsQueryKeys,
+  createAccountContact,
   deleteAccountContact,
   updateAccountContact,
   updateAccountEscalation,
@@ -76,6 +78,43 @@ export function useUpdateAccountContact(accountId: string) {
 
     onSuccess: (data) => {
       queryClient.setQueryData(queryKey, data);
+    },
+  });
+}
+
+/**
+ * Adding a contact.
+ *
+ * No `onMutate`, deliberately, which is the one place this departs from the
+ * update pattern above. Only the server mints a `contact_id`, so an optimistic
+ * card would have to invent one and then swap it for the real row — and the
+ * card's own edit and delete controls key on that id. A card that is briefly
+ * un-editable, or editable against an id the server never issued, is worse than
+ * a card that appears a moment later.
+ */
+export function useCreateAccountContact(accountId: string) {
+  const queryClient = useQueryClient();
+  const queryKey = accountsQueryKeys.contacts(accountId);
+
+  return useMutation({
+    mutationFn: (vars: { body: CreateContactBody; ifMatch: string }) =>
+      createAccountContact(accountId, vars.body, vars.ifMatch),
+
+    onError: (error) => {
+      if (error instanceof AccountsApiError) {
+        toast.error(error.message);
+        return;
+      }
+      toast.error("Couldn't add that contact.");
+    },
+
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKey, data);
+      // The list's contact pips and chase status are derived from the ladder,
+      // and a first P0 flips an account out of "Can't chase" — so the row and
+      // the header have to be refetched, not left showing the old verdict.
+      void queryClient.invalidateQueries({ queryKey: accountsQueryKeys.list() });
+      void queryClient.invalidateQueries({ queryKey: accountsQueryKeys.detail(accountId) });
     },
   });
 }

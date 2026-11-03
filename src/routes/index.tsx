@@ -19,9 +19,11 @@ import { Faq, faqs } from "@/components/landing/Faq";
 import { FinalCta } from "@/components/landing/FinalCta";
 import { Footer } from "@/components/landing/Footer";
 
-const TITLE = "Tagada — Automated Invoicing & Payment Collection";
+import { OG_IMAGE_ALT, OG_IMAGE_URL, SITE_URL } from "@/lib/brand";
+
+const TITLE = "Settle Swiftly — Automated Invoicing & Payment Collection";
 const DESCRIPTION =
-  "Tagada sends invoices, automatically follows up with clients, and stops when you're paid. Automate payment reminders across email, WhatsApp and SMS.";
+  "Settle Swiftly sends invoices, automatically follows up with clients, and stops when you're paid. Automate payment reminders across email, WhatsApp and SMS.";
 const OG_DESCRIPTION =
   "Send the invoice. We chase the payment. Automated reminders across email, WhatsApp and SMS.";
 
@@ -30,34 +32,40 @@ export const Route = createFileRoute("/")({
     meta: [
       { title: TITLE },
       { name: "description", content: DESCRIPTION },
-      { name: "theme-color", content: "#F7F7F3" },
       { property: "og:title", content: TITLE },
       { property: "og:description", content: OG_DESCRIPTION },
       { property: "og:type", content: "website" },
-      { property: "og:image", content: "/og-image.png" },
+      { property: "og:url", content: `${SITE_URL}/` },
+      { property: "og:image", content: OG_IMAGE_URL },
+      { property: "og:image:width", content: "1200" },
+      { property: "og:image:height", content: "630" },
+      { property: "og:image:alt", content: OG_IMAGE_ALT },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: TITLE },
       { name: "twitter:description", content: OG_DESCRIPTION },
-      { name: "twitter:image", content: "/og-image.png" },
+      { name: "twitter:image", content: OG_IMAGE_URL },
+      { name: "twitter:image:alt", content: OG_IMAGE_ALT },
     ],
-    links: [{ rel: "canonical", href: "https://tagada.app/" }],
+    links: [{ rel: "canonical", href: `${SITE_URL}/` }],
   }),
   component: Landing,
 });
 
+/** Structured data (Organization, SoftwareApplication, FAQPage) for search engines. */
 const jsonLd = () => [
   {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: "Tagada",
-    url: "https://tagada.app/",
+    name: "Settle Swiftly",
+    url: `${SITE_URL}/`,
+    logo: `${SITE_URL}/icon-512.png`,
     description:
       "Automated invoicing and payment collection for freelancers, consultants, agencies and small businesses.",
   },
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "Tagada",
+    name: "Settle Swiftly",
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     description: DESCRIPTION,

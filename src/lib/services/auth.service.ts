@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestUrl } from "@tanstack/react-start/server";
 import { z } from "zod";
 
+import { retryOnJwtSkew } from "@/lib/supabase/jwt-skew-retry";
 import { getUserSupabase } from "@/lib/supabase/user-client.server";
 import { signInSchema, signUpSchema } from "@/lib/schemas/auth.schema";
 
@@ -43,14 +44,29 @@ export const getAuthContext = createServerFn({ method: "GET" }).handler(
 
     const authUser = userData.user;
 
-    const [{ data: profile }, { data: memberships, error: membershipsError }] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("display_name, avatar_url")
-        .eq("id", authUser.id)
-        .maybeSingle(),
-      supabase.from("org_members").select("role, orgs(id, name)"),
-    ]);
+    const loadProfileAndMemberships = () =>
+      Promise.all([
+        supabase
+          .from("profiles")
+          .select("display_name, avatar_url")
+          .eq("id", authUser.id)
+          .maybeSingle(),
+        // RLS lets a member see every teammate's membership row, so without the
+        // user_id filter an org comes back once per member, carrying their role.
+        // RLS is still the security boundary; this only picks the caller's rows.
+        // Oldest first: orgs[0] is the org the shell shows, and the dashboard
+        // API resolves the same one.
+        supabase
+          .from("org_members")
+          .select("role, orgs(id, name)")
+          .eq("user_id", authUser.id)
+          .order("created_at", { ascending: true }),
+      ]);
+
+    // Retried once on PGRST303 (JWT issued at future): the membership query is
+    // the first PostgREST call after an OAuth sign-in, where clock drift bites.
+    const [{ data: profile }, { data: memberships, error: membershipsError }] =
+      await retryOnJwtSkew(loadProfileAndMemberships, ([, m]) => m.error);
 
     // A failed query is not the same as "belongs to no orgs". Silently
     // returning an empty list would send an existing user to /onboarding and

@@ -122,7 +122,10 @@ avg_days_late    = mean of (paid_on - due_date) over the last 12 months
 - Multiple contacts per tier allowed.
 - Changing a tier is a plain update to one row. It never reorders or demotes another contact.
 - **Removing or marking `do_not_contact` on the last usable P0 is rejected** with `409` and code `last_p0_required`. The account would silently become unchaseable otherwise.
+- **A channel may not be on without the detail it sends to**: `channel_email` needs an email address, `channel_whatsapp` and `channel_sms` need a phone number. Enforced by the `contacts_channel_reachable` check constraint, because `contacts_reachable` only asks for one of the two — an email-only contact still defaults to `channel_email = true` and can have WhatsApp switched on. A violation is a `422` with code `channel_unreachable`. Reminders queued against a number that does not exist make an account read as chased while nothing goes out.
 - Setting `delivery_state='bounced'` is a system action from the mail provider, never a user edit.
+- **Changing a contact's email resets `delivery_state` to `unverified` and clears `last_bounced_at`.** Not an exception to the rule above: the verdict was about the address that has just been replaced, and a new address has no delivery history. Without this, correcting a bouncing contact leaves the account on `bounced_p0` — "Can't chase" — for an address it no longer holds, which is the state the bounce strip sends people to Contacts to clear.
+- A `PATCH` carries only the fields the editor actually changed. `If-Match` is the account's whole ladder, so it cannot distinguish an edit of this contact from a channel toggled on another card; sending the untouched fields back would overwrite a concurrent edit that the token was never going to catch.
 
 ### 2.4 Pausing
 
@@ -190,6 +193,7 @@ The invoices response returns groups, not a flat list — the subtotal per bucke
 ### Mutations
 
 ```
+POST   /api/v1/accounts                      { names: [ … ] }
 POST   /api/v1/accounts/{id}/contacts
 PATCH  /api/v1/accounts/{id}/contacts/{contactId}
 DELETE /api/v1/accounts/{id}/contacts/{contactId}
@@ -199,24 +203,50 @@ POST   /api/v1/accounts/{id}/pause           { reason, until? }
 POST   /api/v1/accounts/{id}/resume
 ```
 
-Every mutation returns the **full updated resource**, not `204`. The frontend replaces its cached copy rather than guessing what changed, which is what keeps optimistic updates honest.
+`POST /api/v1/accounts` resolves a batch of names to accounts, creating the
+ones the org does not have yet, and answers with a row per requested name —
+`201` when at least one account was created, `200` when every name already
+matched one:
 
-Every mutation writes an `activity_log` row in the same transaction. An audit trail written separately is an audit trail that drifts.
+```json
+{
+  "accounts": [
+    {
+      "requested_name": "Sharma Traders Pvt Ltd",
+      "account_id": "…",
+      "name": "Sharma Traders",
+      "created": false
+    }
+  ]
+}
+```
+
+A name that matches an existing account is returned rather than refused — an
+import naming a known customer must land on that customer. Matching is on
+`app.normalize_account_name()`, so `name` is the account's own name and may
+differ from what was asked for; `requested_name` is the echo that lets a caller
+map the answer back. It is a batch because the importer's account column is,
+and it carries no `If-Match`: creating accounts touches no existing row.
+
+Every other mutation returns the **full updated resource**, not `204`. The frontend replaces its cached copy rather than guessing what changed, which is what keeps optimistic updates honest.
+
+Every mutation of an existing account writes an `activity_log` row in the same transaction. An audit trail written separately is an audit trail that drifts.
 
 ### Error codes the frontend handles specifically
 
-| Code                    | HTTP | Message                                                              |
-| ----------------------- | ---- | -------------------------------------------------------------------- |
-| `last_p0_required`      | 409  | An account needs a P0 contact to be chased. Add a replacement first. |
-| `escalation_order`      | 422  | P2 must come after P1.                                               |
-| `pause_reason_required` | 422  | Add a reason before pausing.                                         |
-| `stale_write`           | 409  | Someone else changed this account. Reload and try again.             |
+| Code                    | HTTP | Message                                                                      |
+| ----------------------- | ---- | ---------------------------------------------------------------------------- |
+| `last_p0_required`      | 409  | An account needs a P0 contact to be chased. Add a replacement first.         |
+| `escalation_order`      | 422  | P2 must come after P1.                                                       |
+| `pause_reason_required` | 422  | Add a reason before pausing.                                                 |
+| `stale_write`           | 409  | Someone else changed this account. Reload and try again.                     |
+| `channel_unreachable`   | 422  | Email needs an address to send to, and WhatsApp or SMS needs a phone number. |
 
 `message` is user-facing copy following the voice rules and is displayed verbatim.
 
 ### Concurrency
 
-Every mutation accepts `If-Match` carrying the resource's `updated_at`. A mismatch returns `stale_write`. Two people editing the same account's contact ladder is not hypothetical — collections is a shared workflow — and last-write-wins silently deletes somebody's contact.
+Every mutation **of an existing account** accepts `If-Match` carrying the resource's `updated_at`. Creating accounts is the exception — `POST /api/v1/accounts` has no prior resource to be stale against, and two people adding accounts at the same time is not a conflict; the unique index on the normalized name settles the one case where they collide. A mismatch returns `stale_write`. Two people editing the same account's contact ladder is not hypothetical — collections is a shared workflow — and last-write-wins silently deletes somebody's contact.
 
 ---
 

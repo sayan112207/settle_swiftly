@@ -12,6 +12,7 @@ import { AccountSettingsPanel } from "@/components/app/AccountSettingsPanel";
 import { AppButton } from "@/components/app/AppButton";
 import { AppSkeleton } from "@/components/app/AppSkeleton";
 import { PauseChaseControls } from "@/components/app/PauseChaseControls";
+import { useRestoreAccount } from "@/lib/queries/account-detail";
 import { PRODUCT_NAME } from "@/lib/brand";
 import {
   formatCalendarDaysSince,
@@ -23,7 +24,9 @@ import {
 import {
   accountDetailSearchSchema,
   type AccountDetail,
+  type AccountDetailSearch,
   type AccountDetailTab,
+  type ContactTier,
   type AccountInvoices,
 } from "@/lib/schemas/accounts";
 import {
@@ -47,9 +50,10 @@ export const Route = createFileRoute("/app/accounts/$accountId")({
   component: AccountDetailPage,
 });
 
+/** One account: header, archived banner, aging, recommendation and the five tabs. */
 function AccountDetailPage() {
   const { accountId } = Route.useParams();
-  const { tab } = Route.useSearch();
+  const { tab, add } = Route.useSearch();
   const navigate = Route.useNavigate();
 
   const detailQuery = useQuery({
@@ -102,6 +106,9 @@ function AccountDetailPage() {
   return (
     <div className="space-y-8">
       <AccountHeaderCard accountId={accountId} detail={detail} />
+      {detail.settings.archived_at !== null ? (
+        <ArchivedBanner accountId={accountId} detail={detail} />
+      ) : null}
       <AgingBar segments={detail.aging} />
       <AccountRecommendationStrip recommendation={detail.recommendation} />
       <AccountDetailTabs
@@ -110,6 +117,12 @@ function AccountDetailPage() {
         detail={detail}
         tab={tab}
         onTabChange={setTab}
+        openAddFor={add}
+        onAddFormClosed={() => {
+          // Drop the param once the form is dealt with, so a refresh or a
+          // shared link does not reopen a form they already closed.
+          void navigate({ search: (prev: AccountDetailSearch) => ({ ...prev, add: undefined }) });
+        }}
         invoices={{
           accountName: detail.name,
           data: invoicesQuery.data,
@@ -124,6 +137,46 @@ function AccountDetailPage() {
   );
 }
 
+/**
+ * Shown on an archived account: what archiving means, and the way back.
+ * Restore is admin-only, like archive; for everyone else the button is
+ * disabled and says why, rather than failing on click.
+ */
+function ArchivedBanner({ accountId, detail }: { accountId: string; detail: AccountDetail }) {
+  const restore = useRestoreAccount(accountId);
+  const canEdit = detail.settings.can_edit;
+  const hintId = useId();
+
+  return (
+    <section
+      aria-label="Archived account"
+      className="flex flex-wrap items-center justify-between gap-4 rounded-card border border-hairline bg-subtle px-4 py-3"
+    >
+      <p className="text-body font-semibold text-fg-soft">
+        This account is archived. It&apos;s out of your totals and nobody is chased. Restore it to
+        make changes.
+      </p>
+      <div className="flex flex-col items-end gap-1">
+        <AppButton
+          variant="secondary"
+          loading={restore.isPending}
+          disabled={!canEdit}
+          aria-describedby={canEdit ? undefined : hintId}
+          onClick={() => restore.mutate({ ifMatch: detail.updated_at })}
+        >
+          Restore account
+        </AppButton>
+        {canEdit ? null : (
+          <span id={hintId} className="text-prose font-normal text-fg-muted">
+            Only workspace admins can restore accounts.
+          </span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** Name, status line, pause controls (hidden when archived) and the headline figures. */
 function AccountHeaderCard({ accountId, detail }: { accountId: string; detail: AccountDetail }) {
   const stale = isSyncStale(detail.last_synced_at);
   const daysSince = formatCalendarDaysSince(detail.last_synced_at);
@@ -141,7 +194,9 @@ function AccountHeaderCard({ accountId, detail }: { accountId: string; detail: A
           />
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <PauseChaseControls accountId={accountId} detail={detail} />
+          {detail.settings.archived_at === null ? (
+            <PauseChaseControls accountId={accountId} detail={detail} />
+          ) : null}
           <AppButton variant="text">Edit</AppButton>
         </div>
       </div>
@@ -203,12 +258,15 @@ function metadataLine(detail: AccountDetail): string {
   return parts.join(" · ");
 }
 
+/** The keyboard-navigable tab strip and its panels. */
 function AccountDetailTabs({
   accountId,
   accountName,
   detail,
   tab,
   onTabChange,
+  openAddFor,
+  onAddFormClosed,
   invoices,
 }: {
   accountId: string;
@@ -216,6 +274,8 @@ function AccountDetailTabs({
   detail: AccountDetail;
   tab: AccountDetailTab;
   onTabChange: (tab: AccountDetailTab) => void;
+  openAddFor: ContactTier | undefined;
+  onAddFormClosed: () => void;
   invoices: {
     accountName: string;
     data: AccountInvoices | undefined;
@@ -311,7 +371,12 @@ function AccountDetailTabs({
               />
             ) : null}
             {selected && item.id === "contacts" ? (
-              <AccountContactsPanel accountId={accountId} />
+              <AccountContactsPanel
+                accountId={accountId}
+                readOnly={detail.settings.archived_at !== null}
+                openAddFor={openAddFor}
+                onAddFormClosed={onAddFormClosed}
+              />
             ) : null}
             {selected && item.id === "payments" ? (
               <AccountPaymentsPanel accountId={accountId} accountName={accountName} />

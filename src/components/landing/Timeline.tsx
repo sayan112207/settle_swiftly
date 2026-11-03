@@ -11,6 +11,7 @@ const workingLabels = [
 
 const TICK_MS = 1050;
 
+/** Landing section walking through a chase, from invoice sent to paid. */
 export function Timeline() {
   const [index, setIndex] = useState(-1);
 
@@ -31,7 +32,7 @@ export function Timeline() {
         >
           You send it.
           <br />
-          <span className="text-ink-soft">Tagada takes it from here.</span>
+          <span className="text-ink-soft">Settle Swiftly takes it from here.</span>
         </h2>
 
         <div className="mx-auto mt-14 max-w-[460px] rounded-[20px] border border-slate-line bg-slate-raised p-10 text-left">

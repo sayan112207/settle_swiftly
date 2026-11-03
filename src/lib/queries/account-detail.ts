@@ -7,15 +7,18 @@ import type {
   PauseAccountBody,
   UpdateChasingSettingsBody,
 } from "@/lib/schemas/accounts";
+import { pauseReasonFor } from "@/lib/schemas/accounts";
 import {
   AccountsApiError,
   accountsQueryKeys,
   archiveAccount,
   pauseAccount,
+  restoreAccount,
   resumeAccount,
   updateChasingSettings,
 } from "@/lib/services/accounts";
 
+/** The settings as they read after this save, for the optimistic copy. */
 function applyChasingSettingsPatch(
   settings: AccountDetail["settings"],
   body: UpdateChasingSettingsBody,
@@ -52,7 +55,7 @@ function applyChasingSettingsPatch(
 
   if (body.chase_mode === "stopped" && body.stop_reason) {
     next.paused_at = settings.paused_at ?? new Date().toISOString();
-    next.pause_reason = body.stop_reason === "Relationship hold" ? "Other" : body.stop_reason;
+    next.pause_reason = pauseReasonFor(body.stop_reason);
   }
 
   return next;
@@ -106,6 +109,7 @@ export function useUpdateChasingSettings(accountId: string) {
   });
 }
 
+/** Archives the account. It stays readable under Accounts → Archived until restored. */
 export function useArchiveAccount(accountId: string) {
   const queryClient = useQueryClient();
   const queryKey = accountsQueryKeys.detail(accountId);
@@ -141,9 +145,49 @@ export function useArchiveAccount(accountId: string) {
       toast.error("Couldn't archive this account.");
     },
 
-    onSuccess: () => {
-      queryClient.removeQueries({ queryKey });
-      void queryClient.invalidateQueries({ queryKey: accountsQueryKeys.list() });
+    // The account stays readable under Accounts → Archived, so keep the
+    // returned copy rather than dropping the page into a 404.
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKey, data);
+      invalidateAfterArchiveChange(queryClient, accountId);
+    },
+  });
+}
+
+/**
+ * Archiving or restoring moves the account between the two list views and in
+ * or out of every total, so the lists, its tabs and the dashboard all refetch.
+ */
+function invalidateAfterArchiveChange(
+  queryClient: ReturnType<typeof useQueryClient>,
+  accountId: string,
+): void {
+  void queryClient.invalidateQueries({ queryKey: ["accounts", "list"] });
+  void queryClient.invalidateQueries({ queryKey: accountsQueryKeys.invoices(accountId) });
+  void queryClient.invalidateQueries({ queryKey: accountsQueryKeys.activityRoot(accountId) });
+  void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+}
+
+/** Restores an archived account (admins only). */
+export function useRestoreAccount(accountId: string) {
+  const queryClient = useQueryClient();
+  const queryKey = accountsQueryKeys.detail(accountId);
+
+  return useMutation({
+    mutationFn: (vars: { ifMatch: string }) => restoreAccount(accountId, vars.ifMatch),
+
+    onError: (error) => {
+      if (error instanceof AccountsApiError) {
+        toast.error(error.message);
+        return;
+      }
+      toast.error("Couldn't restore this account.");
+    },
+
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKey, data);
+      invalidateAfterArchiveChange(queryClient, accountId);
+      toast.success(`${data.name} is back in your accounts.`);
     },
   });
 }
@@ -195,6 +239,7 @@ export function usePauseAccount(accountId: string) {
   });
 }
 
+/** Resumes chasing: lifts a header pause and a Settings stop, "Not set up yet" included. */
 export function useResumeAccount(accountId: string) {
   const queryClient = useQueryClient();
   const queryKey = accountsQueryKeys.detail(accountId);
@@ -214,6 +259,10 @@ export function useResumeAccount(accountId: string) {
           paused_at: null,
           pause_reason: null,
           paused_until: null,
+          // As `account_resume` does: a Settings stop lifts back to the default cadence.
+          ...(previous.settings.chase_mode === "stopped"
+            ? { chase_mode: "default" as const, stop_reason: null, stop_note: null }
+            : {}),
         },
       });
 

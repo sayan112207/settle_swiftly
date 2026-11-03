@@ -2,7 +2,7 @@ import { useState } from "react";
 
 const stepDefs = [
   { num: "01", title: "Send", desc: "Create your invoice." },
-  { num: "02", title: "Chase", desc: "Tagada follows up automatically." },
+  { num: "02", title: "Chase", desc: "Settle Swiftly follows up automatically." },
   { num: "03", title: "Get paid", desc: "Everything stops the moment you get paid." },
 ];
 

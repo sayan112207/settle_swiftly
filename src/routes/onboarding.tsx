@@ -6,7 +6,7 @@ import { createOrg } from "@/lib/services/orgs.service";
 import { createOrgSchema } from "@/lib/schemas/auth.schema";
 
 export const Route = createFileRoute("/onboarding")({
-  head: () => ({ meta: [{ title: "Set up your workspace — Tagada" }] }),
+  head: () => ({ meta: [{ title: "Set up your workspace — Settle Swiftly" }] }),
   beforeLoad: async () => {
     const ctx = await getAuthContext();
     if (!ctx.user) throw redirect({ to: "/login" });

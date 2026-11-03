@@ -36,6 +36,7 @@ const scoreClass: Record<string, string> = {
   Risky: "font-semibold text-danger",
 };
 
+/** Landing section on per-client payment scores learned from payment history. */
 export function ClientScores() {
   const [hovered, setHovered] = useState<number | null>(null);
 
@@ -51,7 +52,7 @@ export function ClientScores() {
           <span className="text-ink-soft">pays late.</span>
         </h2>
         <p className="mt-[18px] max-w-[340px] text-base leading-[1.6] text-ink-muted">
-          Tagada learns how your clients pay.
+          Settle Swiftly learns how your clients pay.
         </p>
       </div>
 

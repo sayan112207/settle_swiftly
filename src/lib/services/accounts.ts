@@ -12,6 +12,8 @@ import {
   accountsSortDirSchema,
   archiveAccountBodySchema,
   createContactBodySchema,
+  ensureAccountsBodySchema,
+  ensureAccountsResultSchema,
   pauseAccountBodySchema,
   updateChasingSettingsBodySchema,
   updateContactBodySchema,
@@ -24,8 +26,10 @@ import {
   type AccountsList,
   type AccountsListFilter,
   type AccountsSortDir,
+  type AccountsView,
   type ArchiveAccountBody,
   type CreateContactBody,
+  type EnsureAccountsResult,
   type PauseAccountBody,
   type UpdateChasingSettingsBody,
   type UpdateContactBody,
@@ -43,7 +47,9 @@ import {
   mockArchiveAccount,
   mockCreateContact,
   mockDeleteContact,
+  mockEnsureAccounts,
   mockPauseAccount,
+  mockRestoreAccount,
   mockResumeAccount,
   mockUpdateChasingSettings,
   mockUpdateContact,
@@ -83,6 +89,8 @@ const accountIdSchema = z.string().uuid();
 const ifMatchSchema = z.string().min(1);
 
 export type AccountsListParams = {
+  /** Omitted means the live list; `archived` is the Archived tab. */
+  view?: AccountsView;
   filter?: AccountsListFilter | AccountsListFilter[];
   sort?: string;
   dir?: AccountsSortDir;
@@ -149,6 +157,7 @@ async function requestJson(path: string, init: RequestInit): Promise<unknown> {
   return body;
 }
 
+/** The list's query string: view, repeatable filters, sort, direction and page. */
 function buildListQuery(params: AccountsListParams): string {
   const search = new URLSearchParams();
   const filters =
@@ -160,6 +169,7 @@ function buildListQuery(params: AccountsListParams): string {
   for (const filter of filters) {
     search.append("filter", accountsListFilterSchema.parse(filter));
   }
+  if (params.view === "archived") search.set("view", "archived");
   if (params.sort !== undefined) search.set("sort", params.sort);
   if (params.dir !== undefined) search.set("dir", accountsSortDirSchema.parse(params.dir));
   if (params.page !== undefined)
@@ -267,9 +277,9 @@ function centsToMoney(cents: bigint): string {
 
 /** `GET /api/v1/accounts` */
 export async function getAccounts(params: AccountsListParams = {}): Promise<AccountsList> {
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
-    return accountsListSchema.parse(filterMockList(getMockAccountsList(), params));
+    return accountsListSchema.parse(filterMockList(getMockAccountsList(params.view), params));
   }
 
   const body = await requestJson(`/accounts${buildListQuery(params)}`, {
@@ -279,11 +289,35 @@ export async function getAccounts(params: AccountsListParams = {}): Promise<Acco
   return accountsListSchema.parse(body);
 }
 
+/**
+ * `POST /api/v1/accounts` — resolve account names to ids, creating the ones
+ * this org does not have yet.
+ *
+ * Names are matched on the database's normalized form, so a caller cannot
+ * predict which of its names will come back `created: false`. Read the result
+ * rather than assuming the batch was all new.
+ */
+export async function ensureAccounts(names: readonly string[]): Promise<EnsureAccountsResult> {
+  const payload = ensureAccountsBodySchema.parse({ names });
+
+  if (getPublicEnv().useAccountsMocks) {
+    await delay(MOCK_DELAY_MS);
+    return ensureAccountsResultSchema.parse(mockEnsureAccounts(payload.names));
+  }
+
+  const body = await requestJson("/accounts", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return ensureAccountsResultSchema.parse(body);
+}
+
 /** `GET /api/v1/accounts/{id}` */
 export async function getAccount(accountId: string): Promise<AccountDetail> {
   const id = accountIdSchema.parse(accountId);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     const detail = getMockAccountDetail(id);
     if (!detail) {
@@ -303,7 +337,7 @@ export async function getAccount(accountId: string): Promise<AccountDetail> {
 export async function getAccountInvoices(accountId: string): Promise<AccountInvoices> {
   const id = accountIdSchema.parse(accountId);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     const invoices = getMockAccountInvoices(id);
     if (!invoices) {
@@ -323,7 +357,7 @@ export async function getAccountInvoices(accountId: string): Promise<AccountInvo
 export async function getAccountContacts(accountId: string): Promise<AccountContacts> {
   const id = accountIdSchema.parse(accountId);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     const contacts = getMockAccountContacts(id);
     if (!contacts) {
@@ -343,7 +377,7 @@ export async function getAccountContacts(accountId: string): Promise<AccountCont
 export async function getAccountPayments(accountId: string): Promise<AccountPayments> {
   const id = accountIdSchema.parse(accountId);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     const payments = getMockAccountPayments(id);
     if (!payments) {
@@ -368,7 +402,7 @@ export async function getAccountActivity(
   const safeLimit =
     limit === undefined ? undefined : z.number().int().positive().max(100).parse(limit);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     const activity = getMockAccountActivity(id, safeLimit);
     if (!activity) {
@@ -395,7 +429,7 @@ export async function createAccountContact(
   const payload = createContactBodySchema.parse(body);
   const match = ifMatchSchema.parse(ifMatch);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     try {
       return accountContactsSchema.parse(mockCreateContact(id, payload, match));
@@ -428,7 +462,7 @@ export async function updateAccountContact(
   const payload = updateContactBodySchema.parse(body);
   const match = ifMatchSchema.parse(ifMatch);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     try {
       return accountContactsSchema.parse(mockUpdateContact(id, cid, payload, match));
@@ -459,7 +493,7 @@ export async function deleteAccountContact(
   const cid = accountIdSchema.parse(contactId);
   const match = ifMatchSchema.parse(ifMatch);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     try {
       return accountContactsSchema.parse(mockDeleteContact(id, cid, match));
@@ -488,7 +522,7 @@ export async function updateAccountEscalation(
   const payload = updateEscalationBodySchema.parse(body);
   const match = ifMatchSchema.parse(ifMatch);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     try {
       return accountContactsSchema.parse(mockUpdateEscalation(id, payload, match));
@@ -519,7 +553,7 @@ export async function updateChasingSettings(
   const payload = updateChasingSettingsBodySchema.parse(body);
   const match = ifMatchSchema.parse(ifMatch);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     try {
       return accountDetailSchema.parse(mockUpdateChasingSettings(id, payload, match));
@@ -550,7 +584,7 @@ export async function archiveAccount(
   const payload = archiveAccountBodySchema.parse(body);
   const match = ifMatchSchema.parse(ifMatch);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     try {
       return accountDetailSchema.parse(mockArchiveAccount(id, payload, match));
@@ -581,7 +615,7 @@ export async function pauseAccount(
   const payload = pauseAccountBodySchema.parse(body);
   const match = ifMatchSchema.parse(ifMatch);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     try {
       return accountDetailSchema.parse(mockPauseAccount(id, payload, match));
@@ -607,7 +641,7 @@ export async function resumeAccount(accountId: string, ifMatch: string): Promise
   const id = accountIdSchema.parse(accountId);
   const match = ifMatchSchema.parse(ifMatch);
 
-  if (getPublicEnv().useMocks) {
+  if (getPublicEnv().useAccountsMocks) {
     await delay(MOCK_DELAY_MS);
     try {
       return accountDetailSchema.parse(mockResumeAccount(id, match));
@@ -617,6 +651,30 @@ export async function resumeAccount(accountId: string, ifMatch: string): Promise
   }
 
   const responseBody = await requestJson(`/accounts/${id}/resume`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "If-Match": match,
+    },
+  });
+  return accountDetailSchema.parse(responseBody);
+}
+
+/** `POST /api/v1/accounts/{id}/restore` — un-archives the account. Admins only. */
+export async function restoreAccount(accountId: string, ifMatch: string): Promise<AccountDetail> {
+  const id = accountIdSchema.parse(accountId);
+  const match = ifMatchSchema.parse(ifMatch);
+
+  if (getPublicEnv().useAccountsMocks) {
+    await delay(MOCK_DELAY_MS);
+    try {
+      return accountDetailSchema.parse(mockRestoreAccount(id, match));
+    } catch (error) {
+      toAccountsApiError(error);
+    }
+  }
+
+  const responseBody = await requestJson(`/accounts/${id}/restore`, {
     method: "POST",
     headers: {
       Accept: "application/json",

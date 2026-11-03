@@ -6,11 +6,13 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { PRODUCT_NAME, THEME_COLOR } from "../lib/brand";
 
 function NotFoundComponent() {
   return (
@@ -34,7 +36,13 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+/**
+ * Root error boundary: the last-resort screen when a route throws.
+ *
+ * `error` is `unknown` by the router's own typing, so it is only reported, never
+ * read as an `Error`. Retrying invalidates the router before resetting the boundary.
+ */
+function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
@@ -77,14 +85,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Tagada — Automated Invoicing & Payment Collection" },
+      { title: "Settle Swiftly — Automated Invoicing & Payment Collection" },
       {
         name: "description",
         content:
-          "Tagada sends invoices, automatically follows up with clients, and stops when you're paid. Automate payment reminders across email, WhatsApp and SMS.",
+          "Settle Swiftly sends invoices, automatically follows up with clients, and stops when you're paid. Automate payment reminders across email, WhatsApp and SMS.",
       },
-      { name: "author", content: "Tagada" },
-      { property: "og:title", content: "Tagada — Automated Invoicing & Payment Collection" },
+      { name: "author", content: "Settle Swiftly" },
+      {
+        property: "og:title",
+        content: "Settle Swiftly — Automated Invoicing & Payment Collection",
+      },
       {
         property: "og:description",
         content:
@@ -92,14 +103,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
+      { property: "og:site_name", content: PRODUCT_NAME },
+      { name: "theme-color", content: THEME_COLOR },
     ],
     links: [
       {
         rel: "stylesheet",
         href: appCss,
       },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/favicon.ico", sizes: "48x48" },
+      { rel: "icon", href: "/favicon.svg", type: "image/svg+xml", sizes: "any" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+      { rel: "manifest", href: "/site.webmanifest" },
     ],
   }),
   shellComponent: RootShell,

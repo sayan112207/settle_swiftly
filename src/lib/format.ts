@@ -24,21 +24,35 @@ export function invoiceStatusLabel(
 
 // Built once at module scope: constructing an Intl formatter is expensive
 // relative to calling it, and an invoice table formats one per row.
-const inrFormatter = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+//
+// Both fraction digits are pinned to 2, so whole amounts render ₹4,82,000.00
+// rather than ₹4,82,000. Fixed width is the point: in a right-aligned money
+// column, mixed precision puts the decimal points on different axes and the
+// column stops being scannable. It also stops a stored 125000.50 from
+// displaying as ₹1,25,001, which is a different number.
+const inrFormatter = new Intl.NumberFormat("en-IN", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 /**
  * Renders a rupee amount using the Indian digit grouping (lakh/crore), so
- * 1840000 reads as ₹18,40,000 rather than ₹1,840,000.
+ * 1840000 reads as ₹18,40,000.00 rather than ₹1,840,000.
  *
  * Takes a string because money arrives from Postgres `numeric` columns as a
- * string — going through a float in transit is what loses paise. Amounts are
- * rounded to whole rupees for display; keep the original string for anything
- * that has to add up.
+ * string — going through a float in transit is what loses paise. Paise are
+ * shown; keep the original string for anything that has to add up.
  *
- * The sign is placed outside the symbol (-₹50,000, not ₹-50,000) for the
+ * The sign is placed outside the symbol (-₹50,000.00, not ₹-50,000.00) for the
  * credit notes and refunds that come back negative.
  */
 export function formatINR(value: string): string {
+  // Blank is checked separately because Number("") and Number("   ") are 0,
+  // not NaN — so an empty amount would slip past the finite check below and
+  // render ₹0.00, stating a number nobody entered. The draft table formats
+  // raw form input, where an empty amount field is an ordinary thing to hit.
+  if (value.trim() === "") return "—";
+
   const amount = Number(value);
   // A malformed amount is a bug upstream, but rendering "₹NaN" in a table is
   // worse than an em dash — and returning ₹0 would quietly state a falsehood.
@@ -48,7 +62,7 @@ export function formatINR(value: string): string {
   return `${sign}₹${inrFormatter.format(Math.abs(amount))}`;
 }
 
-/** Spec §7: zero renders as ₹0 in muted ink, never as an em dash. */
+/** Spec §7: zero renders as ₹0.00 in muted ink, never as an em dash. */
 export function isZeroMoney(value: string): boolean {
   return /^-?0+(?:\.0+)?$/.test(value);
 }
