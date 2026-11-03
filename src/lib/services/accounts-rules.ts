@@ -9,6 +9,7 @@
  */
 
 import { formatINR } from "@/lib/format";
+import { CHASING_NOT_SET_UP } from "@/lib/schemas/accounts";
 import type {
   AccountListItem,
   AccountsListFilter,
@@ -117,13 +118,21 @@ export function headerStatus(
       return "Can't chase — no primary contact";
     case "bounced_p0":
       return "Chasing paused — email bouncing";
-    case "paused":
-      if (account.chaseMode === "stopped") {
+    case "paused": {
+      const notSetUp = account.chaseMode === "stopped" && account.stopReason === CHASING_NOT_SET_UP;
+      // Nobody stopped it: chasing is opt-in, and this account was never turned on.
+      if (notSetUp && account.pausedAt === null) {
+        return "Chasing is off — choose a cadence in Settings to turn it on";
+      }
+      if (account.chaseMode === "stopped" && !notSetUp) {
         return `Chasing stopped — ${account.stopReason ?? "Other"}`;
       }
+      // A pause, possibly kept from before the opt-in. Settings is locked while
+      // it lasts and Resume ends it, so the pause is what the header names.
       return account.pausedUntil === null
         ? `Chasing paused — ${account.pauseReason ?? "Other"}`
         : `Chasing paused — ${account.pauseReason ?? "Other"} until ${dayMonth(account.pausedUntil)}`;
+    }
     case "active":
       return "Active";
   }

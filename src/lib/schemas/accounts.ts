@@ -106,6 +106,13 @@ export const cadenceChannelSchema = z.enum(["email", "whatsapp", "both", "voice"
 
 export const cadenceRecipientsSchema = z.enum(["p0", "p0p1", "p0p1p2"]);
 
+/**
+ * Chasing is opt-in: every account starts stopped with this reason, until
+ * someone picks a cadence in its Settings. The system sets it; the Settings
+ * reason picker does not offer it.
+ */
+export const CHASING_NOT_SET_UP = "Not set up yet";
+
 /** Shared vocabulary for header pause and settings stop — one list on the wire. */
 export const chaseStopReasonSchema = z.enum([
   "Dispute",
@@ -113,7 +120,14 @@ export const chaseStopReasonSchema = z.enum([
   "Client request",
   "Relationship hold",
   "Other",
+  CHASING_NOT_SET_UP,
 ]);
+
+/** The pause reason a settings stop shows as: a reason pause has no word for reads as "Other". */
+export function pauseReasonFor(reason: ChaseStopReason): PauseReason {
+  const parsed = pauseReasonSchema.safeParse(reason);
+  return parsed.success ? parsed.data : "Other";
+}
 
 export const weekdaySchema = z.enum(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
 

@@ -29,7 +29,12 @@ import type {
 } from "@/lib/schemas/accounts";
 import { updateChasingSettingsBodySchema } from "@/lib/schemas/accounts";
 import { CHASE_STATUS_LABEL } from "@/lib/services/accounts-rules";
-import { blockedChannels, dncReasonIsPresent } from "@/lib/schemas/accounts";
+import {
+  CHASING_NOT_SET_UP,
+  blockedChannels,
+  dncReasonIsPresent,
+  pauseReasonFor,
+} from "@/lib/schemas/accounts";
 import type { ContactChannelFacts } from "@/lib/schemas/accounts";
 
 /**
@@ -1309,13 +1314,13 @@ function isAccountLevelChaseReason(reason: string | null): boolean {
  * bounce, `dnc` when all of them are do-not-contact.
  */
 function syncChaseStateFromLadder(accountId: string): void {
-  const ladder = mockStore.contacts[accountId];
-  if (!ladder) return;
   // Without the whole ladder the recomputed summary would be a downgrade
   // dressed up as a recalculation: an account whose row says it has a P0 would
   // lose it because the synthesized ladder never had one. Leave the fixture's
   // summary as it stands until there is ladder data to justify changing it.
   if (!mockStore.ladderComplete.has(accountId)) return;
+  // A new account stores no ladder until its first contact. Empty is the truth.
+  const ladder = mockStore.contacts[accountId] ?? { contacts: [] };
 
   const pip = (tier: ContactTier): ContactPip => {
     const onTier = ladder.contacts.filter((contact) => contact.tier === tier);
@@ -1327,9 +1332,12 @@ function syncChaseStateFromLadder(accountId: string): void {
 
   const row = mockStore.list.items.find((item) => item.account_id === accountId);
   const detail = mockStore.details[accountId];
-  // Pausing is a property of the account, not the ladder, so it survives a
-  // contact change rather than being recomputed away.
-  const paused = row?.chase_status === "paused" || detail?.chase_status === "paused";
+  // Pausing and stopping are properties of the account, not the ladder, so
+  // they survive a contact change rather than being recomputed away.
+  const paused =
+    row?.chase_status === "paused" ||
+    detail?.chase_status === "paused" ||
+    detail?.settings.chase_mode === "stopped";
   const usableP0 = ladder.contacts.filter((c) => c.tier === "P0" && !c.do_not_contact);
   const status: ChaseStatus =
     usableP0.length === 0
@@ -1351,6 +1359,27 @@ function syncChaseStateFromLadder(accountId: string): void {
     detail.status_label = CHASE_STATUS_LABEL[status];
     detail.header_status = headerStatusFor({ chase_status: status });
   }
+}
+
+/**
+ * The status once a stop or pause is lifted, list row included: a new account
+ * switched on may still have no P0. Its stored statuses are cleared first, so
+ * the stop just lifted is not read back in as a pause. A pause still standing
+ * (`paused_at`) is the account's own and keeps it paused.
+ */
+function liftStop(accountId: string, detail: AccountDetail): void {
+  if (detail.settings.paused_at !== null) return;
+  if (!mockStore.ladderComplete.has(accountId)) {
+    // No ladder to recompute from: what a list-only fixture resumes to.
+    detail.chase_status = "active";
+    detail.status_label = "Active";
+    detail.header_status = "Active";
+    return;
+  }
+  const row = mockStore.list.items.find((item) => item.account_id === accountId);
+  if (row) row.chase_status = "active";
+  detail.chase_status = "active";
+  syncChaseStateFromLadder(accountId);
 }
 
 /**
@@ -1596,6 +1625,7 @@ export function mockUpdateEscalation(
   return structuredClone(contacts);
 }
 
+/** Saves an account's chasing settings, as `account_update_chasing_settings` does. */
 export function mockUpdateChasingSettings(
   accountId: string,
   body: UpdateChasingSettingsBody,
@@ -1625,6 +1655,7 @@ export function mockUpdateChasingSettings(
   }
 
   const settings = detail.settings;
+  const wasStopped = settings.chase_mode === "stopped";
   settings.chase_mode = payload.chase_mode;
   if (payload.steps !== undefined) {
     settings.steps = settings.steps.map((step) => {
@@ -1660,11 +1691,13 @@ export function mockUpdateChasingSettings(
 
   if (payload.chase_mode === "stopped" && payload.stop_reason) {
     settings.paused_at = settings.paused_at ?? bumpUpdatedAt();
-    settings.pause_reason =
-      payload.stop_reason === "Relationship hold" ? "Other" : payload.stop_reason;
+    settings.pause_reason = pauseReasonFor(payload.stop_reason);
     detail.chase_status = "paused";
     detail.status_label = "Paused";
     detail.header_status = `Chasing paused — ${payload.stop_reason}`;
+  } else if (wasStopped) {
+    // A cadence chosen for a stopped account turns chasing on, as Resume does.
+    liftStop(accountId, detail);
   }
 
   detail.updated_at = bumpUpdatedAt();
@@ -1784,6 +1817,7 @@ export function mockPauseAccount(
   return structuredClone(detail);
 }
 
+/** Resumes chasing, as `account_resume` does: clears the pause and lifts a Settings stop. */
 export function mockResumeAccount(accountId: string, ifMatch: string): AccountDetail {
   const detail = mockStore.details[accountId];
   if (!detail) {
@@ -1798,6 +1832,12 @@ export function mockResumeAccount(accountId: string, ifMatch: string): AccountDe
   detail.settings.paused_at = null;
   detail.settings.pause_reason = null;
   detail.settings.paused_until = null;
+  // As `account_resume` does: a Settings stop lifts back to the default cadence.
+  if (detail.settings.chase_mode === "stopped") {
+    detail.settings.chase_mode = "default";
+    detail.settings.stop_reason = null;
+    detail.settings.stop_note = null;
+  }
   // Sharma's P0 is still bouncing after resume of an intentional pause.
   if (accountId === ACCOUNT_IDS.sharma) {
     detail.chase_status = "bounced_p0";
@@ -1808,9 +1848,7 @@ export function mockResumeAccount(accountId: string, ifMatch: string): AccountDe
     detail.status_label = "Can't chase";
     detail.header_status = "Can't chase — no primary contact";
   } else {
-    detail.chase_status = "active";
-    detail.status_label = "Active";
-    detail.header_status = "Active";
+    liftStop(accountId, detail);
   }
   detail.updated_at = bumpUpdatedAt();
   appendActivity(accountId, "resume", "Chasing resumed.");
@@ -1881,6 +1919,11 @@ export function mockEnsureAccounts(names: readonly string[]): EnsureAccountsResu
       status_label: "Can't chase",
     };
     mockStore.list.items.push(item);
+    // Chasing is opt-in, as the column defaults make it on the backend.
+    mockStore.details[item.account_id] = {
+      ...synthesizeDetailFromListItem(item),
+      settings: makeChasingSettings({ chase_mode: "stopped", stop_reason: CHASING_NOT_SET_UP }),
+    };
     // Brand new: it has no contacts, and that is the truth rather than a gap.
     mockStore.ladderComplete.add(item.account_id);
     mockStore.list.total_count += 1;

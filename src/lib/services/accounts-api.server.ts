@@ -337,7 +337,9 @@ async function loadSettings(context: AccountContext): Promise<AccountChasingSett
 
   return {
     chase_mode: row.chase_mode as AccountChasingSettings["chase_mode"],
-    steps: row.chase_mode === "custom" ? mergeSteps(overrides) : defaultSteps(),
+    // A stopped account keeps its saved custom steps on offer, so choosing
+    // Custom again (say, to turn chasing on) starts from them, not the default.
+    steps: row.chase_mode === "default" ? defaultSteps() : mergeSteps(overrides),
     default_steps: defaultSteps(),
     default_summary: DEFAULT_CADENCE_SUMMARY,
     stop_reason: row.stop_reason as ChaseStopReason | null,

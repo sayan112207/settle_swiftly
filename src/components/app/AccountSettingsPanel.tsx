@@ -10,7 +10,12 @@ import {
   useResumeAccount,
   useUpdateChasingSettings,
 } from "@/lib/queries/account-detail";
-import { chaseStopReasonSchema, tdsSectionSchema, weekdaySchema } from "@/lib/schemas/accounts";
+import {
+  CHASING_NOT_SET_UP,
+  chaseStopReasonSchema,
+  tdsSectionSchema,
+  weekdaySchema,
+} from "@/lib/schemas/accounts";
 import type {
   AccountDetail,
   CadenceStep,
@@ -64,6 +69,16 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
   const [steps, setSteps] = useState<CadenceStep[]>(s.steps);
   const [stopReason, setStopReason] = useState<ChaseStopReason | "">(s.stop_reason ?? "");
   const [stopNote, setStopNote] = useState(s.stop_note ?? "");
+
+  /**
+   * Picks a cadence that chases. The system's "Not set up yet" is dropped on
+   * the way out of "Don't chase": the picker hides it, so stopping again
+   * must not quietly resubmit it — it needs a reason someone chose.
+   */
+  function chooseChasing(next: "default" | "custom") {
+    setMode(next);
+    if (stopReason === CHASING_NOT_SET_UP) setStopReason("");
+  }
   const [windowMode, setWindowMode] = useState(s.send_window_mode);
   const [opensAt, setOpensAt] = useState(s.send_window.opens_at);
   const [closesAt, setClosesAt] = useState(s.send_window.closes_at);
@@ -239,6 +254,13 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
                 </span>
               ) : null}
             </div>
+            {/* Not while paused: the form is locked, and Resume is the way on. */}
+            {!isPaused && s.chase_mode === "stopped" && s.stop_reason === CHASING_NOT_SET_UP ? (
+              <p className="mt-2 text-body text-fg-muted">
+                Chasing is off for this account until you turn it on. Check its contacts, then
+                choose a cadence below and save.
+              </p>
+            ) : null}
 
             <fieldset className="mt-4 border-0 p-0">
               <legend className="sr-only">Chasing cadence for {detail.name}</legend>
@@ -246,7 +268,7 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
                 <ModeOption
                   name="chase-mode"
                   checked={mode === "default"}
-                  onSelect={() => setMode("default")}
+                  onSelect={() => chooseChasing("default")}
                   title="Use the default cadence"
                   description={s.default_summary}
                   disabled={locked}
@@ -254,7 +276,7 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
                 <ModeOption
                   name="chase-mode"
                   checked={mode === "custom"}
-                  onSelect={() => setMode("custom")}
+                  onSelect={() => chooseChasing("custom")}
                   title="Use a different cadence for this account"
                   description="Starts from the default. Edit only the steps you need."
                   disabled={locked}
@@ -335,7 +357,10 @@ export function AccountSettingsPanel({ accountId, detail }: Props) {
                     }`}
                   >
                     <option value="">Select a reason</option>
-                    {STOP_REASONS.map((r) => (
+                    {/* "Not set up yet" is the system's reason, offered only while it is the saved one. */}
+                    {STOP_REASONS.filter(
+                      (r) => r !== CHASING_NOT_SET_UP || s.stop_reason === CHASING_NOT_SET_UP,
+                    ).map((r) => (
                       <option key={r} value={r}>
                         {r}
                       </option>
