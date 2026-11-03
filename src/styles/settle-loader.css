@@ -1,7 +1,13 @@
 /* src/styles/settle-loader.css
  *
  * The Settle Swiftly loader: four ruled lines that draw and clear, then a tick.
- * Colours come from app-tokens.css; no raw hex here.
+ * Colours come from the app tokens; no raw hex here.
+ *
+ * Two names are spelled --accent and --page rather than --color-accent and
+ * --color-page on purpose. styles.css re-declares those two tokens for the
+ * landing palette (--color-accent -> var(--accent) = a neutral grey), which
+ * resolves at :root. Only the raw variables are re-pointed by .app-theme, so
+ * they are the ones that give the app's green and page colour.
  *
  * Variant B: the rules are ink (--color-fg), the tick is the brand green
  * (--color-accent). Nothing animates longer than the durations below.
@@ -32,7 +38,7 @@
   stroke-dashoffset: 1;
 }
 .ss-loader .tick {
-  stroke: var(--color-accent);
+  stroke: var(--accent);
   stroke-width: 3.5;
   stroke-linejoin: miter;
   stroke-miterlimit: 10;
@@ -132,7 +138,7 @@
   position: absolute;
   inset: 0;
   z-index: 10;
-  background: var(--color-page);
+  background: var(--page);
   animation: ss-fade-in 120ms ease-out;
   transition: opacity 120ms ease-out;
 }

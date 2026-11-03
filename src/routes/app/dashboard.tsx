@@ -70,6 +70,7 @@ function userFacingMessage(error: unknown, fallback: string): string {
   return error instanceof DashboardApiError ? error.message : fallback;
 }
 
+/** The dashboard: totals, aging, attention items and the chase queue, behind a page-level loader on first load. */
 function DashboardPage() {
   const { user } = Route.useRouteContext();
   const firstName = formatFirstName(user.displayName);
