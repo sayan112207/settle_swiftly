@@ -1,0 +1,179 @@
+/* src/styles/settle-loader.css
+ *
+ * The Settle Swiftly loader: four ruled lines that draw and clear, then a tick.
+ * Colours come from the app tokens; no raw hex here.
+ *
+ * Two names are spelled --accent and --page rather than --color-accent and
+ * --color-page on purpose. styles.css re-declares those two tokens for the
+ * landing palette (--color-accent -> var(--accent) = a neutral grey), which
+ * resolves at :root. Only the raw variables are re-pointed by .app-theme, so
+ * they are the ones that give the app's green and page colour.
+ *
+ * Variant B: the rules are ink (--color-fg), the tick is the brand green
+ * (--color-accent). Nothing animates longer than the durations below.
+ */
+
+.ss-loader {
+  position: relative;
+  display: inline-flex;
+  color: var(--color-fg);
+  animation: ss-fade-in 120ms ease-out; /* the one permitted opacity animation */
+  transition: opacity 120ms ease-out;
+}
+.ss-loader[data-leaving] {
+  opacity: 0;
+}
+.ss-loader svg {
+  display: block;
+  overflow: visible;
+}
+.ss-loader path {
+  fill: none;
+  stroke: currentColor;
+  stroke-dasharray: 1 1;
+}
+.ss-loader .rule {
+  stroke-width: 3;
+  stroke-linecap: butt;
+  stroke-dashoffset: 1;
+}
+.ss-loader .tick {
+  stroke: var(--accent);
+  stroke-width: 3.5;
+  stroke-linejoin: miter;
+  stroke-miterlimit: 10;
+  stroke-dashoffset: 1;
+}
+
+/* Phase 1 — 1100ms cycle, 120ms stagger, exits to the right */
+@keyframes ss-rule {
+  0% {
+    stroke-dashoffset: 1;
+    animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+  20% {
+    stroke-dashoffset: 0;
+    animation-timing-function: linear;
+  }
+  71% {
+    stroke-dashoffset: 0;
+    animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
+  }
+  93% {
+    stroke-dashoffset: -1;
+  }
+  100% {
+    stroke-dashoffset: -1;
+  }
+}
+@keyframes ss-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.ss-loader .rule {
+  animation: ss-rule 1100ms infinite both;
+  animation-play-state: paused;
+}
+.ss-loader .rule:nth-child(2) {
+  animation-delay: 120ms;
+}
+.ss-loader .rule:nth-child(3) {
+  animation-delay: 240ms;
+}
+.ss-loader .rule:nth-child(4) {
+  animation-delay: 360ms;
+}
+.ss-loader[data-state="loading"] .rule {
+  animation-play-state: running;
+}
+
+/* Phase 2 — rules are frozen and completed inline by the component (80ms) */
+.ss-loader[data-state="done"] .tick {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 220ms cubic-bezier(0.3, 0, 0.2, 1) 80ms;
+}
+
+/* Phase 3 — stop where they are, fade to the unfilled grey. Never a tick. */
+.ss-loader[data-state="error"] .rule,
+.ss-loader[data-state="offline"] .rule {
+  stroke: var(--color-stroke);
+  transition: stroke 200ms ease-out;
+}
+
+.ss-loader__msg {
+  position: absolute;
+  top: calc(100% + 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 340px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.ss-loader__title {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-fg);
+}
+.ss-loader__help {
+  margin: 0;
+  font-size: var(--text-prose);
+  font-weight: 400;
+  color: var(--color-fg-muted);
+}
+.ss-loader__slow {
+  flex-direction: row;
+  gap: 12px;
+  animation: ss-fade-in 200ms ease-out;
+}
+
+/* Page-change overlay: main area only, mark at 42% */
+.ss-route-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: var(--page);
+  animation: ss-fade-in 120ms ease-out;
+  transition: opacity 120ms ease-out;
+}
+.ss-route-loader:has(.ss-loader[data-leaving]) {
+  opacity: 0;
+}
+.ss-route-loader .ss-loader {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: none;
+  transition: none;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ss-loader,
+  .ss-route-loader {
+    animation: none;
+    transition: none;
+  }
+  .ss-loader .rule {
+    animation: none;
+    stroke-dashoffset: 0;
+    transition: none;
+  }
+  .ss-loader[data-state="done"] .tick {
+    transition: none;
+  }
+  .ss-loader[data-state="error"] .rule,
+  .ss-loader[data-state="offline"] .rule {
+    transition: none;
+  }
+  .ss-loader__slow {
+    animation: none;
+  }
+}

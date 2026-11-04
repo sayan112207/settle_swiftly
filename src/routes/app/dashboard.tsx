@@ -9,9 +9,11 @@ import { AppCheckbox } from "@/components/app/AppCheckbox";
 import { AppSkeleton } from "@/components/app/AppSkeleton";
 import { BulkBar } from "@/components/app/BulkBar";
 import { DataTable, type Column } from "@/components/app/DataTable";
+import { SettleLoader } from "@/components/app/SettleLoader";
 import { MetricTile } from "@/components/app/MetricTile";
 import { PriorityBadge } from "@/components/app/PriorityBadge";
 import { PRODUCT_NAME } from "@/lib/brand";
+import { usePageLoader } from "@/lib/hooks/usePageLoader";
 import {
   formatDays,
   formatFirstName,
@@ -68,6 +70,7 @@ function userFacingMessage(error: unknown, fallback: string): string {
   return error instanceof DashboardApiError ? error.message : fallback;
 }
 
+/** The dashboard: totals, aging, attention items and the chase queue, behind a page-level loader on first load. */
 function DashboardPage() {
   const { user } = Route.useRouteContext();
   const firstName = formatFirstName(user.displayName);
@@ -87,6 +90,16 @@ function DashboardPage() {
   const summary = summaryQuery.data;
   const asOf = summary?.as_of ?? null;
   const busy = summaryQuery.isPending || queueQuery.isPending;
+  // Page-level wait: only while both requests are outstanding. Once either has
+  // answered, the sections below handle their own skeletons and errors.
+  const loader = usePageLoader(
+    summaryQuery.isPending && queueQuery.isPending,
+    false,
+    // Only a fully successful page gets the tick. If either request failed or
+    // is still pending, show the sections straight away (Retry alerts, own
+    // skeletons) instead of announcing "loaded" over unfinished content.
+    summaryQuery.isError || queueQuery.isError || summaryQuery.isPending || queueQuery.isPending,
+  );
 
   return (
     <div aria-busy={busy || undefined}>
@@ -103,40 +116,48 @@ function DashboardPage() {
         )}
       </header>
 
-      {summaryQuery.isPending ? (
-        <SummarySkeletons />
-      ) : summaryQuery.isError ? (
+      {loader.status ? (
+        <div className="flex min-h-64 items-center justify-center">
+          <SettleLoader status={loader.status} label="dashboard" onExited={loader.onExited} />
+        </div>
+      ) : (
         <>
-          <div className="mb-4 flex items-center gap-3">
-            <p role="alert" className="text-body font-semibold text-fg">
-              {userFacingMessage(summaryQuery.error, "Couldn't load your totals.")}
-            </p>
-            <AppButton variant="secondary" onClick={() => void summaryQuery.refetch()}>
-              Retry
-            </AppButton>
-          </div>
-          <TileRow summary={null} />
-        </>
-      ) : summary ? (
-        <>
-          <TileRow summary={summary} />
-          <section className="mt-8">
-            <h2 className="mb-4 text-section font-bold tracking-tight text-fg">
-              Where the money is sitting
-            </h2>
-            <AgingBar segments={summary.aging} />
-          </section>
-          <AttentionRow summary={summary} />
-        </>
-      ) : null}
+          {summaryQuery.isPending ? (
+            <SummarySkeletons />
+          ) : summaryQuery.isError ? (
+            <>
+              <div className="mb-4 flex items-center gap-3">
+                <p role="alert" className="text-body font-semibold text-fg">
+                  {userFacingMessage(summaryQuery.error, "Couldn't load your totals.")}
+                </p>
+                <AppButton variant="secondary" onClick={() => void summaryQuery.refetch()}>
+                  Retry
+                </AppButton>
+              </div>
+              <TileRow summary={null} />
+            </>
+          ) : summary ? (
+            <>
+              <TileRow summary={summary} />
+              <section className="mt-8">
+                <h2 className="mb-4 text-section font-bold tracking-tight text-fg">
+                  Where the money is sitting
+                </h2>
+                <AgingBar segments={summary.aging} />
+              </section>
+              <AttentionRow summary={summary} />
+            </>
+          ) : null}
 
-      <ChaseNowSection
-        summary={summary}
-        items={queueQuery.data?.items}
-        isPending={queueQuery.isPending}
-        error={queueQuery.isError ? queueQuery.error : undefined}
-        onRetry={() => void queueQuery.refetch()}
-      />
+          <ChaseNowSection
+            summary={summary}
+            items={queueQuery.data?.items}
+            isPending={queueQuery.isPending}
+            error={queueQuery.isError ? queueQuery.error : undefined}
+            onRetry={() => void queueQuery.refetch()}
+          />
+        </>
+      )}
     </div>
   );
 }

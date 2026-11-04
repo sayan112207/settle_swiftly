@@ -6,8 +6,9 @@ import { ChevronDown, Search, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppButton } from "@/components/app/AppButton";
-import { AppSkeleton } from "@/components/app/AppSkeleton";
+import { SettleLoader } from "@/components/app/SettleLoader";
 import { PRODUCT_NAME } from "@/lib/brand";
+import { usePageLoader } from "@/lib/hooks/usePageLoader";
 import { formatINR, formatOverdueDays, formatShortDate } from "@/lib/format";
 import { accountsQueryKeys, getAccounts } from "@/lib/services/accounts";
 import { DashboardApiError, dashboardQueryKeys, postChases } from "@/lib/services/dashboard";
@@ -412,6 +413,12 @@ function InvoicesPage() {
 
   const isLoading = invoicesQuery.isPending;
   const isError = !!invoicesQuery.error;
+  // A failed refetch with a list already on screen must not replace it: the
+  // page-level error state is only for "no data yet". The stale list stays and
+  // the inline banner below offers a retry.
+  const loadFailed = isError && !invoicesQuery.data;
+  const refetchFailed = isError && !!invoicesQuery.data;
+  const loader = usePageLoader(isLoading, loadFailed);
   const isEmpty = !isLoading && (invoicesQuery.data?.length ?? 0) === 0;
   const isNoResults =
     !isLoading && filteredInvoices.length === 0 && (invoicesQuery.data?.length ?? 0) > 0;
@@ -560,36 +567,36 @@ function InvoicesPage() {
         </div>
       </header>
 
-      {/* Loading state */}
-      {isLoading && (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }, (_, i) => (
-            <AppSkeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      )}
-
-      {/* Error state */}
-      {isError && (
-        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-          <p className="text-sm font-semibold text-gray-900">We couldn't load your invoices</p>
-          <p className="mt-1 text-sm text-gray-600">
-            Your filters are still applied — nothing has changed.
-          </p>
-          <AppButton
-            variant="secondary"
-            onClick={async () => {
-              await invoicesQuery.refetch();
-            }}
-            className="mt-4"
-          >
-            Try again
-          </AppButton>
+      {/* Loading / error state: page-level loader, retry refetches the same query */}
+      {loader.status && (
+        <div className="flex min-h-64 items-center justify-center pb-16">
+          <SettleLoader
+            status={loader.status}
+            label="invoices"
+            onExited={loader.onExited}
+            onRetry={() => void invoicesQuery.refetch()}
+          />
         </div>
       )}
 
       {/* Empty state */}
-      {!isLoading && !isError && isEmpty && (
+      {/* Refetch failed but the list is still on screen: keep it, offer a retry */}
+      {refetchFailed && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-4 rounded-lg border border-gray-200 bg-white px-4 py-3"
+        >
+          <p className="text-sm text-gray-900">
+            <span className="font-semibold">We couldn't refresh your invoices.</span> Showing the
+            last list we loaded — your filters are still applied.
+          </p>
+          <AppButton variant="secondary" onClick={() => void invoicesQuery.refetch()}>
+            Retry
+          </AppButton>
+        </div>
+      )}
+
+      {!loader.status && !isLoading && !loadFailed && isEmpty && (
         <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
           <h2 className="text-lg font-bold text-gray-900">No invoices yet</h2>
           <p className="mt-1 text-sm text-gray-600">
@@ -605,7 +612,7 @@ function InvoicesPage() {
       )}
 
       {/* Populated state */}
-      {!isLoading && !isError && !isEmpty && (
+      {!loader.status && !isLoading && !loadFailed && !isEmpty && (
         <>
           {/* Metrics */}
           <div className="flex gap-8 border-b border-gray-200 pb-4 items-baseline">
