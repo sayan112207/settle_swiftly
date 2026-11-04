@@ -95,9 +95,10 @@ function DashboardPage() {
   const loader = usePageLoader(
     summaryQuery.isPending && queueQuery.isPending,
     false,
-    // No tick over a failure: if either request failed, show the sections (and
-    // their Retry alerts) straight away.
-    summaryQuery.isError || queueQuery.isError,
+    // Only a fully successful page gets the tick. If either request failed or
+    // is still pending, show the sections straight away (Retry alerts, own
+    // skeletons) instead of announcing "loaded" over unfinished content.
+    summaryQuery.isError || queueQuery.isError || summaryQuery.isPending || queueQuery.isPending,
   );
 
   return (
