@@ -7,19 +7,11 @@ import { toast } from "sonner";
 
 import { AppButton } from "@/components/app/AppButton";
 import { SettleLoader } from "@/components/app/SettleLoader";
-import { InvoiceOfferSheet, type OfferSheetInvoice } from "@/components/app/InvoiceOfferSheet";
 import { PRODUCT_NAME } from "@/lib/brand";
 import { usePageLoader } from "@/lib/hooks/usePageLoader";
 import { formatINR, formatOverdueDays, formatShortDate } from "@/lib/format";
 import { accountsQueryKeys, getAccounts } from "@/lib/services/accounts";
 import { DashboardApiError, dashboardQueryKeys, postChases } from "@/lib/services/dashboard";
-import { commercialTermsQueryKeys, getCommercialTerms } from "@/lib/services/commercial-terms";
-import {
-  indexAccountTerms,
-  invoiceInterest,
-  istDateOf,
-  type InterestAccrual,
-} from "@/lib/services/commercial-terms-rules";
 import { getInvoices, invoicesQueryKeys, type InvoiceRow } from "@/lib/services/invoices";
 import { exportInvoicesAsCSV } from "@/lib/utils/csv-export";
 import {
@@ -179,32 +171,6 @@ function InvoicesPage() {
     queryFn: () => getAccounts({ sort: "name", dir: "asc" }),
     retry: false,
   });
-
-  // Accrued interest is shown beside an invoice's outstanding amount, never
-  // added into it. Until the terms endpoint exists this query fails quietly
-  // and no interest lines render — interest is off by default anyway.
-  const termsQuery = useQuery({
-    queryKey: commercialTermsQueryKeys.terms,
-    queryFn: () => getCommercialTerms(),
-    retry: false,
-  });
-  const interestFor = useMemo(() => {
-    const terms = termsQuery.data;
-    if (!terms) return (): InterestAccrual | null => null;
-    const index = indexAccountTerms(terms);
-    const asOf = istDateOf(terms.as_of);
-    return (invoice: Invoice): InterestAccrual | null =>
-      isUnpaidInvoice(invoice)
-        ? invoiceInterest({
-            resolved: index.get(invoice.account_id),
-            principal: getOutstandingAmount(invoice).toFixed(2),
-            dueDate: invoice.due_date,
-            asOf,
-            bankRatePct: terms.rates.bank_rate_pct,
-          })
-        : null;
-  }, [termsQuery.data]);
-  const [offerInvoice, setOfferInvoice] = useState<OfferSheetInvoice | null>(null);
 
   const accountNames = useMemo(
     () =>
@@ -1150,7 +1116,6 @@ function InvoicesPage() {
                           {visibleColumns.has("outstanding") && (
                             <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">
                               {formatINR(String(getOutstandingAmount(invoice)))}
-                              <InterestLine accrual={interestFor(invoice)} />
                             </td>
                           )}
                           {visibleColumns.has("ageing") && (
@@ -1250,14 +1215,6 @@ function InvoicesPage() {
         </>
       )}
 
-      <InvoiceOfferSheet
-        invoice={offerInvoice}
-        open={offerInvoice !== null}
-        onOpenChange={(open) => {
-          if (!open) setOfferInvoice(null);
-        }}
-      />
-
       {/* Detail Drawer */}
       {selectedInvoice && (
         <>
@@ -1289,7 +1246,6 @@ function InvoicesPage() {
               <p className="text-sm text-gray-600 mt-1">
                 outstanding of {formatINR(String(selectedInvoice.amount))}
               </p>
-              <InterestLine accrual={interestFor(selectedInvoice)} align="left" />
               <Link
                 to="/app/accounts/$accountId"
                 params={{ accountId: selectedInvoice.account_id }}
@@ -1350,30 +1306,6 @@ function InvoicesPage() {
             </div>
 
             <div className="border-t border-gray-200 p-4 flex gap-2">
-              <AppButton
-                variant="secondary"
-                className="flex-1"
-                disabled={!isUnpaidInvoice(selectedInvoice)}
-                title={
-                  isUnpaidInvoice(selectedInvoice) ? undefined : "Nothing is owed on this invoice"
-                }
-                onClick={() => {
-                  setOfferInvoice({
-                    invoice_id: selectedInvoice.id,
-                    invoice_number: selectedInvoice.invoice_number,
-                    account_id: selectedInvoice.account_id,
-                    account_name:
-                      accountNames.get(selectedInvoice.account_id) ?? selectedInvoice.account_id,
-                    outstanding: getOutstandingAmount(selectedInvoice).toFixed(2),
-                    issue_date: selectedInvoice.issue_date,
-                    due_date: selectedInvoice.due_date,
-                  });
-                  // The drawer closes so the sheet is the only modal on screen.
-                  setSelectedInvoice(null);
-                }}
-              >
-                Offers
-              </AppButton>
               <button
                 type="button"
                 disabled
@@ -1397,27 +1329,5 @@ function InvoicesPage() {
         </>
       )}
     </div>
-  );
-}
-
-/**
- * Accrued interest under an outstanding amount: lighter, with a leading "+",
- * and never summed into the figure above it. Renders nothing when interest is
- * off for the account or nothing has accrued.
- */
-function InterestLine({
-  accrual,
-  align = "right",
-}: {
-  accrual: InterestAccrual | null;
-  align?: "left" | "right";
-}) {
-  if (accrual === null) return null;
-  return (
-    <span
-      className={`mt-0.5 block text-xs font-normal text-gray-500 ${align === "right" ? "text-right" : "text-left"}`}
-    >
-      + {formatINR(accrual.amount)} interest
-    </span>
   );
 }

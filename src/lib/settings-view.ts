@@ -7,7 +7,6 @@ export const SETTINGS_SECTIONS = [
   { id: "entities", label: "Entities" },
   { id: "team", label: "Team" },
   { id: "chasing-defaults", label: "Chasing defaults" },
-  { id: "commercial-terms", label: "Commercial terms" },
   { id: "notifications", label: "Notifications" },
 ] as const;
 

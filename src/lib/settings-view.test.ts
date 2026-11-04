@@ -51,7 +51,6 @@ describe("settings-view", () => {
       "Entities",
       "Team",
       "Chasing defaults",
-      "Commercial terms",
       "Notifications",
     ]);
   });
