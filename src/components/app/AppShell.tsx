@@ -23,7 +23,7 @@ import { signOut } from "@/lib/services/auth.service";
  *
  * Every nav item is present and navigable. Order follows the system brief:
  * Dashboard · Accounts · Invoices · Add entries · Payments · Chasing · Legal ·
- * Tax documents · Reports · Settings.
+ * Reports · Settings.
  */
 
 const NAV_ITEMS = [
@@ -34,7 +34,6 @@ const NAV_ITEMS = [
   { label: "Payments", to: "/app/payments" },
   { label: "Chasing", to: "/app/chasing" },
   { label: "Legal", to: "/app/legal" },
-  { label: "Tax documents", to: "/app/tax-documents" },
   { label: "Reports", to: "/app/reports" },
   { label: "Settings", to: "/app/settings" },
 ] as const;

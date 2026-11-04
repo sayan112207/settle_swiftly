@@ -6,12 +6,42 @@ import type {
   Seller,
   ThreadEntry,
 } from "@/lib/schemas/legal";
-import { fromPaise, istDateOf, toPaise } from "@/lib/services/commercial-terms-rules";
-
 /**
  * Pure rules behind Legal escalation and the matter record. No React, no
  * fetch — unit-tested in `legal-rules.test.ts`.
  */
+
+/** Money string → integer paise, without a float touching the paise. */
+export function toPaise(value: string): bigint {
+  const negative = value.trim().startsWith("-");
+  const [whole = "0", fraction = ""] = value.trim().replace(/^-/, "").split(".");
+  const paise = BigInt(whole) * 100n + BigInt((fraction + "00").slice(0, 2));
+  return negative ? -paise : paise;
+}
+
+/** Integer paise → money string with two decimals. */
+export function fromPaise(paise: bigint): string {
+  const negative = paise < 0n;
+  const abs = negative ? -paise : paise;
+  const whole = abs / 100n;
+  const fraction = (abs % 100n).toString().padStart(2, "0");
+  return `${negative ? "-" : ""}${whole}.${fraction}`;
+}
+
+/**
+ * The calendar date of an ISO timestamp in India.
+ *
+ * Pinned to Asia/Kolkata for the same reason `format.ts` pins its formatters:
+ * the server and browser must agree on which day "as of" is.
+ */
+export function istDateOf(isoTimestamp: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(isoTimestamp));
+}
 
 /** Settle Swiftly's own charge per matter: document preparation and tracking. */
 export const MATTER_FEE = "999.00";

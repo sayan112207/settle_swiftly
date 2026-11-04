@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { isoDate } from "@/lib/schemas/commercial-terms";
 import { moneyString } from "@/lib/schemas/dashboard";
+
+/** A calendar date. Due dates carry no time component, so no time zone. */
+export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be "YYYY-MM-DD"');
 
 /**
  * Legal escalation and the matter record. Contract in `docs/legal-contract.md`.

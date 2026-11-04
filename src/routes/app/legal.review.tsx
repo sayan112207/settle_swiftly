@@ -11,15 +11,17 @@ import { TypeToConfirmDialog } from "@/components/app/TypeToConfirmDialog";
 import { PRODUCT_NAME } from "@/lib/brand";
 import { formatINR, formatShortDate } from "@/lib/format";
 import type { Advocate, EligibleInvoice, EligibleResponse } from "@/lib/schemas/legal";
-import { fromPaise, istDateOf, toPaise } from "@/lib/services/commercial-terms-rules";
 import { featureErrorMessage } from "@/lib/services/feature-api";
 import { createMatters, getAdvocates, getEligible, legalQueryKeys } from "@/lib/services/legal";
 import {
   defaultDemandText,
+  fromPaise,
+  istDateOf,
   MATTER_FEE,
   parseInvoiceIds,
   selectionSummary,
   statutoryRoutesOpen,
+  toPaise,
   totalMatterCost,
 } from "@/lib/services/legal-rules";
 

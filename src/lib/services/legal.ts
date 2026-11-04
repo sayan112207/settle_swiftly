@@ -19,14 +19,13 @@ import {
   type ThreadMessage,
   type UpdateMatterBody,
 } from "@/lib/schemas/legal";
-import { fromPaise, toPaise } from "@/lib/services/commercial-terms-rules";
 import {
   FeatureApiError,
   featureRequest,
   featureWrite,
   mockDelay,
 } from "@/lib/services/feature-api";
-import { attachmentError, stageLabel } from "@/lib/services/legal-rules";
+import { attachmentError, fromPaise, stageLabel, toPaise } from "@/lib/services/legal-rules";
 import { advocatesFixture, legalMockStore, MOCK_CLIENT_NAME } from "@/lib/services/legal.mocks";
 
 /**
