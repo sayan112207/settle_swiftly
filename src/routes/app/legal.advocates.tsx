@@ -68,6 +68,14 @@ function AdvocatesPage() {
         </p>
       </header>
 
+      {eligibleQuery.isError ? (
+        <QueryNotice
+          error={eligibleQuery.error}
+          fallback="Couldn't load the invoices you selected."
+          onRetry={() => void eligibleQuery.refetch()}
+        />
+      ) : null}
+
       {advocatesQuery.isPending ? (
         <div className="max-w-4xl space-y-3" aria-busy="true">
           <AppSkeleton className="h-36 w-full" />
@@ -86,6 +94,8 @@ function AdvocatesPage() {
               key={advocate.advocate_id}
               advocate={advocate}
               invoices={invoices ?? ""}
+              canRequest={selection !== null && selection.count > 0}
+              checkingInvoices={eligibleQuery.isPending}
             />
           ))}
           <p className="rounded-card bg-alt px-4 py-3 text-prose text-fg">
@@ -100,7 +110,17 @@ function AdvocatesPage() {
 }
 
 /** One advocate: who they are, what they charge, and the way to request them. */
-function AdvocateCard({ advocate, invoices }: { advocate: Advocate; invoices: string }) {
+function AdvocateCard({
+  advocate,
+  invoices,
+  canRequest,
+  checkingInvoices,
+}: {
+  advocate: Advocate;
+  invoices: string;
+  canRequest: boolean;
+  checkingInvoices: boolean;
+}) {
   const chips = [
     ["Legal notice", formatINR(advocate.notice_fee)],
     [
@@ -133,13 +153,21 @@ function AdvocateCard({ advocate, invoices }: { advocate: Advocate; invoices: st
       <p className="mt-3 max-w-3xl text-body font-normal text-fg-soft">
         &ldquo;{advocate.note}&rdquo;
       </p>
-      <Link
-        to="/app/legal/review"
-        search={{ invoices, advocate: advocate.advocate_id }}
-        className="mt-4 inline-flex items-center rounded-pill border border-stroke bg-card px-4 py-2 text-body font-semibold text-fg hover:bg-hovered"
-      >
-        Request this advocate
-      </Link>
+      {checkingInvoices ? (
+        <p className="mt-4 text-prose text-fg-muted">Checking the invoices you selected…</p>
+      ) : canRequest ? (
+        <Link
+          to="/app/legal/review"
+          search={{ invoices, advocate: advocate.advocate_id }}
+          className="mt-4 inline-flex items-center rounded-pill border border-stroke bg-card px-4 py-2 text-body font-semibold text-fg hover:bg-hovered"
+        >
+          Request this advocate
+        </Link>
+      ) : (
+        <p className="mt-4 text-prose text-fg-soft">
+          Choose at least one eligible invoice before requesting an advocate.
+        </p>
+      )}
     </article>
   );
 }

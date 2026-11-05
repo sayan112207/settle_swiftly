@@ -36,6 +36,11 @@ export const eligibleInvoiceSchema = z.object({
   amount_outstanding: moneyString,
   /** Eligibility starts at 90 days; anything younger is a backend bug. */
   days_overdue: z.number().int().min(90),
+  /**
+   * Eligibility also needs four follow-ups. The schema still accepts a lower
+   * count so one bad row does not fail the whole list; `getEligible` drops
+   * those rows before a screen can offer them for escalation.
+   */
   follow_ups: z.number().int().nonnegative(),
   last_contact_on: isoDate.nullable(),
   /** Why this row can't be selected, or null when it can. Backend-composed. */

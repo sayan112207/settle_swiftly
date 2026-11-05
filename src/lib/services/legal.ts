@@ -25,7 +25,15 @@ import {
   featureWrite,
   mockDelay,
 } from "@/lib/services/feature-api";
-import { attachmentError, fromPaise, stageLabel, toPaise } from "@/lib/services/legal-rules";
+import {
+  attachmentError,
+  escalationEligible,
+  fromPaise,
+  isClosedStage,
+  nextStepForStage,
+  stageLabel,
+  toPaise,
+} from "@/lib/services/legal-rules";
 import { advocatesFixture, legalMockStore, MOCK_CLIENT_NAME } from "@/lib/services/legal.mocks";
 
 /**
@@ -73,10 +81,16 @@ function mockNow(): string {
 export async function getEligible(): Promise<EligibleResponse> {
   if (getPublicEnv().useMocks) {
     await mockDelay();
-    return eligibleResponseSchema.parse(legalMockStore().eligible);
+    return presentEligible(legalMockStore().eligible);
   }
   const body = await featureRequest("/legal/eligible", { method: "GET" }, COMING_SOON);
-  return eligibleResponseSchema.parse(body);
+  return presentEligible(body);
+}
+
+/** Parses the eligible payload and drops rows that have not had four follow-ups. */
+function presentEligible(body: unknown): EligibleResponse {
+  const parsed = eligibleResponseSchema.parse(body);
+  return { ...parsed, items: escalationEligible(parsed.items) };
 }
 
 /** `GET /api/v1/legal/advocates` */
@@ -212,14 +226,37 @@ export async function createMatters(body: CreateMatterBody): Promise<MatterSumma
         brief: null,
         client_contact: null,
       };
+      store.advocateDetails[matterId] = {
+        ...structuredClone(store.businessDetails[matterId]),
+        viewer: "advocate",
+        unread: false,
+        brief: {
+          claim: summary.invoice_numbers.join(", "),
+          debtor: summary.account_name,
+          creditor: summary.client_name,
+          prior_demand: "Follow-ups are cited in the demand text.",
+          statutory: "Assess on review",
+          documents: "Invoice numbers",
+        },
+        client_contact: {
+          name: "Accounts team",
+          role: "Accounts payable",
+          email: "accounts@client.example",
+          phone: "+91 80 4000 0000",
+        },
+      };
+      store.advocateMatters = [{ ...summary, unread: false }, ...store.advocateMatters];
       store.eligible = {
         ...store.eligible,
         open_matter_count: store.eligible.open_matter_count + 1,
         items: store.eligible.items.map((item) =>
-          item.account_id === first.account_id && payload.invoice_ids.includes(item.invoice_id)
+          item.account_id === first.account_id && item.lock === null
             ? {
                 ...item,
-                lock: { reason: "A matter is already open for this invoice.", matter_id: matterId },
+                lock: {
+                  reason: "A matter is already open for this account.",
+                  matter_id: matterId,
+                },
               }
             : item,
         ),
@@ -296,6 +333,7 @@ export async function postMatterMessage(
   const payload = postMessageBodySchema.parse(body);
   if (getPublicEnv().useMocks) {
     await mockDelay(250);
+    const store = legalMockStore();
     const attachments = payload.attachment_ids
       .map((id) => mockUploads.get(id))
       .filter((a): a is Attachment => a !== undefined);
@@ -311,6 +349,13 @@ export async function postMatterMessage(
     for (const detail of mockDetails(matterId)) {
       detail.thread.push(structuredClone(message));
       detail.documents.push(...structuredClone(attachments));
+    }
+    if (viewer === "business") {
+      const advocateDetail = store.advocateDetails[matterId];
+      if (advocateDetail) advocateDetail.unread = true;
+      store.advocateMatters = store.advocateMatters.map((item) =>
+        item.matter_id === matterId ? { ...item, unread: true } : item,
+      );
     }
     return threadMessageSchema.parse(message);
   }
@@ -364,6 +409,14 @@ export async function updateAdvocateMatter(
   if (getPublicEnv().useMocks) {
     await mockDelay(250);
     const store = legalMockStore();
+    const current = store.advocateDetails[matterId] ?? store.businessDetails[matterId];
+    if (!current) throw new FeatureApiError("not_found", "This matter doesn't exist.");
+    if (isClosedStage(current.stage)) {
+      throw new FeatureApiError("invalid", "This matter is closed and can't be updated.");
+    }
+    const today = mockNow().slice(0, 10);
+    const nextStep = nextStepForStage(payload.stage, payload.next_deadline_on);
+    const closed = isClosedStage(payload.stage);
     for (const detail of mockDetails(matterId)) {
       const label =
         detail.stage === "awaiting_acceptance"
@@ -371,6 +424,9 @@ export async function updateAdvocateMatter(
           : `Stage changed to ${stageLabel(payload.stage)} by ${advocateName}`;
       detail.advocate_accepted = true;
       detail.stage = payload.stage;
+      detail.last_update_on = today;
+      detail.next_step = nextStep;
+      detail.closed_on = closed ? today : detail.closed_on;
       detail.next_deadline = payload.next_deadline_on
         ? { on: payload.next_deadline_on, label: detail.next_deadline?.label ?? "Next deadline" }
         : null;
@@ -383,7 +439,11 @@ export async function updateAdvocateMatter(
       });
     }
     const touch = (items: MatterSummary[]) =>
-      items.map((item) => (item.matter_id === matterId ? { ...item, stage: payload.stage } : item));
+      items.map((item) =>
+        item.matter_id === matterId
+          ? { ...item, stage: payload.stage, last_update_on: today, next_step: nextStep }
+          : item,
+      );
     store.matters = touch(store.matters);
     store.advocateMatters = touch(store.advocateMatters);
     return;

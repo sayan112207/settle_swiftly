@@ -425,6 +425,7 @@ function shortMatter(
   openedOn: string,
   openedAt: string,
   entryId: string,
+  businessMessage?: { entryId: string; sentAt: string; body: string },
 ): MatterDetail {
   return {
     ...summary,
@@ -452,6 +453,19 @@ function shortMatter(
         label: `Matter opened · ${summary.invoice_numbers.join(", ")}`,
         attachments: [],
       },
+      ...(businessMessage
+        ? [
+            {
+              type: "message" as const,
+              entry_id: businessMessage.entryId,
+              author: { role: "business" as const, name: summary.client_name },
+              sent_at: businessMessage.sentAt,
+              body: businessMessage.body,
+              attachments: [],
+              withdrawn_at: null,
+            },
+          ]
+        : []),
     ],
     brief: {
       claim: `${summary.invoice_numbers.join(", ")}`,
@@ -537,6 +551,11 @@ export const advocateMatterDetailsFixture: Record<string, MatterDetail> = {
     "2026-08-15",
     "2026-08-15T15:40:00+05:30",
     "e0000102-0000-4000-8000-000000000102",
+    {
+      entryId: "e0000104-0000-4000-8000-000000000104",
+      sentAt: "2026-08-15T16:05:00+05:30",
+      body: "Please review VF-1188 and VF-1203 and let us know if you can take this on.",
+    },
   ),
   [MATTER_IDS.delta]: shortMatter(
     DELTA,

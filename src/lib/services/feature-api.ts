@@ -2,7 +2,7 @@ import { apiErrorSchema } from "@/lib/schemas/dashboard";
 
 /**
  * Shared request plumbing for features whose `/api/v1` endpoints are being
- * built behind the screens: Legal escalation, Matters, and Commercial terms.
+ * built behind the screens: Legal escalation and Matters.
  *
  * Mirrors `reports.ts` exactly — the same three "not built yet" signals, the
  * same envelope handling — so these screens degrade the way Reports already
@@ -55,6 +55,10 @@ export async function featureRequest(
     headers: { Accept: "application/json", ...init.headers },
     signal: init.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
+
+  // Advocate stage updates and message withdrawals succeed with an empty 204.
+  // That is a completed write, not a missing endpoint.
+  if (response.status === 204) return undefined;
 
   const isJson = response.headers.get("content-type")?.includes("application/json") ?? false;
   if (response.status === 404 || (response.ok && !isJson)) {

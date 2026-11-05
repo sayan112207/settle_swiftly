@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
+import type { KeyboardEvent } from "react";
 
 import { PRODUCT_NAME } from "@/lib/brand";
 import { getEligible, getMatters, legalQueryKeys } from "@/lib/services/legal";
@@ -23,8 +24,28 @@ function tabClass(active: boolean): string {
  */
 function LegalLayout() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const onEligible = pathname === "/app/legal" || pathname === "/app/legal/";
   const onMatters = pathname === "/app/legal/matters" || pathname === "/app/legal/matters/";
+
+  /** Arrow keys move between the two section tabs, matching the tab pattern. */
+  function onTabsKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const tabs = [
+      { to: "/app/legal" as const, id: "legal-tab-eligible" },
+      { to: "/app/legal/matters" as const, id: "legal-tab-matters" },
+    ];
+    const current = onMatters ? 1 : 0;
+    let next = current;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (current + 1) % tabs.length;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp")
+      next = (current - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    const tab = tabs[next]!;
+    void navigate({ to: tab.to }).then(() => document.getElementById(tab.id)?.focus());
+  }
 
   // Counts for the tab labels. The same keys as the pages, so no extra fetch.
   const eligibleQuery = useQuery({
@@ -57,19 +78,24 @@ function LegalLayout() {
         role="tablist"
         aria-label="Legal sections"
         className="flex gap-7 border-b border-hairline"
+        onKeyDown={onTabsKeyDown}
       >
         <Link
+          id="legal-tab-eligible"
           to="/app/legal"
           role="tab"
           aria-selected={onEligible}
+          tabIndex={onEligible ? 0 : -1}
           className={tabClass(onEligible)}
         >
           Eligible{eligibleCount === undefined ? "" : ` (${eligibleCount})`}
         </Link>
         <Link
+          id="legal-tab-matters"
           to="/app/legal/matters"
           role="tab"
           aria-selected={onMatters}
+          tabIndex={onMatters ? 0 : -1}
           className={tabClass(onMatters)}
         >
           Matters{mattersCount === undefined ? "" : ` (${mattersCount})`}

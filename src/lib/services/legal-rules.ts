@@ -11,6 +11,14 @@ import type {
  * fetch — unit-tested in `legal-rules.test.ts`.
  */
 
+/** Follow-ups an invoice needs before it can be escalated. */
+export const MIN_FOLLOW_UPS = 4;
+
+/** Rows the eligible list may offer. A shortfall is dropped, not a failed load. */
+export function escalationEligible(items: readonly EligibleInvoice[]): EligibleInvoice[] {
+  return items.filter((item) => item.follow_ups >= MIN_FOLLOW_UPS);
+}
+
 /** Money string → integer paise, without a float touching the paise. */
 export function toPaise(value: string): bigint {
   const negative = value.trim().startsWith("-");
@@ -150,6 +158,27 @@ export function stageLabel(stage: MatterStage): string {
   return STAGE_LABEL[stage];
 }
 
+const deadlineFormatter = new Intl.DateTimeFormat("en-IN", {
+  day: "numeric",
+  month: "short",
+  timeZone: "Asia/Kolkata",
+});
+
+/** The matters-list line after an advocate moves the stage. */
+export function nextStepForStage(stage: MatterStage, deadlineOn: string | null): string {
+  if (stage === "recovered") return "Recovered";
+  if (stage === "closed") return "Closed";
+  if (stage === "notice_drafting") return "Draft the notice";
+  if (stage === "client_responded") return "Review their reply";
+  if (stage === "awaiting_acceptance") return "Waiting for the advocate to accept";
+  if (deadlineOn && (stage === "notice_issued" || stage === "awaiting_response")) {
+    const date = new Date(`${deadlineOn}T12:00:00+05:30`);
+    if (!Number.isNaN(date.getTime())) return `Response due ${deadlineFormatter.format(date)}`;
+  }
+  if (stage === "notice_issued") return "Notice issued";
+  return "Awaiting response";
+}
+
 /** The badge tone for a stage: warn when the business has something to read. */
 export function stageTone(stage: MatterStage): "neutral" | "warn" | "green" {
   if (stage === "client_responded") return "warn";
@@ -226,11 +255,15 @@ export type ThreadDay = { day: string; label: string; entries: ThreadEntry[] };
 
 /**
  * The thread split into days, in Indian time, oldest first. A day separator
- * reads "28 July 2026"; entries keep the order the backend sent them in.
+ * reads "28 July 2026". Entries are ordered by when they happened, so a
+ * payload that arrives out of order still reads as one record.
  */
 export function groupThreadByDay(entries: readonly ThreadEntry[]): ThreadDay[] {
+  const ordered = [...entries].sort(
+    (a, b) => new Date(entryTime(a)).getTime() - new Date(entryTime(b)).getTime(),
+  );
   const days: ThreadDay[] = [];
-  for (const entry of entries) {
+  for (const entry of ordered) {
     const time = entryTime(entry);
     const day = istDateOf(time);
     const last = days[days.length - 1];

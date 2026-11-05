@@ -14,8 +14,11 @@ import {
   fileBadge,
   formatFileSize,
   formatThreadTime,
+  escalationEligible,
   groupThreadByDay,
   joinNames,
+  MIN_FOLLOW_UPS,
+  nextStepForStage,
   parseInvoiceIds,
   qualifyLabel,
   routeCount,
@@ -168,6 +171,74 @@ describe("thread", () => {
 
   test("formatThreadTime stamps in Indian time, 24-hour", () => {
     expect(formatThreadTime("2026-07-28T10:02:00+05:30")).toBe("28 Jul, 10:02");
+  });
+
+  test("orders entries by time when the payload is not chronological", () => {
+    const later: ThreadEntry = {
+      type: "event",
+      entry_id: "e0000998-0000-4000-8000-000000000998",
+      at: "2026-08-12T10:00:00+05:30",
+      label: "later",
+      attachments: [],
+    };
+    const earlier: ThreadEntry = {
+      type: "message",
+      entry_id: "e0000997-0000-4000-8000-000000000997",
+      author: { role: "business", name: "Meridian Traders" },
+      sent_at: "2026-07-28T10:02:00+05:30",
+      body: "earlier",
+      attachments: [],
+      withdrawn_at: null,
+    };
+    const days = groupThreadByDay([later, earlier]);
+    expect(days.map((day) => day.day)).toEqual(["2026-07-28", "2026-08-12"]);
+    expect(days[0]?.entries[0]?.entry_id).toBe(earlier.entry_id);
+  });
+});
+
+describe("escalationEligible", () => {
+  test("drops invoices under the four-follow-up rule", () => {
+    const parsed = eligibleResponseSchema.parse({
+      as_of: "2026-08-16T09:00:00+05:30",
+      seller: { udyam_registered: true, enterprise_size: "small", is_trader: false },
+      open_matter_count: 0,
+      items: [
+        {
+          invoice_id: "11111111-1111-4111-8111-111111111111",
+          invoice_number: "INV-1",
+          account_id: "22222222-2222-4222-8222-222222222222",
+          account_name: "Orbit Labs",
+          amount_outstanding: "1000.00",
+          days_overdue: 100,
+          follow_ups: MIN_FOLLOW_UPS - 1,
+          last_contact_on: null,
+          lock: null,
+        },
+        {
+          invoice_id: "33333333-3333-4333-8333-333333333333",
+          invoice_number: "INV-2",
+          account_id: "22222222-2222-4222-8222-222222222222",
+          account_name: "Orbit Labs",
+          amount_outstanding: "2000.00",
+          days_overdue: 120,
+          follow_ups: MIN_FOLLOW_UPS,
+          last_contact_on: null,
+          lock: null,
+        },
+      ],
+    });
+    expect(escalationEligible(parsed.items).map((item) => item.invoice_number)).toEqual(["INV-2"]);
+  });
+});
+
+describe("nextStepForStage", () => {
+  test("names the deadline when the stage is waiting on the client", () => {
+    expect(nextStepForStage("awaiting_response", "2026-08-21")).toBe("Response due 21 Aug");
+  });
+
+  test("marks a recovered matter closed", () => {
+    expect(nextStepForStage("recovered", null)).toBe("Recovered");
+    expect(nextStepForStage("closed", null)).toBe("Closed");
   });
 });
 

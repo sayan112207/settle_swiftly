@@ -108,6 +108,7 @@ function ReviewPage() {
     <div className="space-y-5">
       {back}
       <Review
+        key={`${selection.total}:${statutoryRoutesOpen(eligibleQuery.data.seller)}`}
         data={eligibleQuery.data}
         rows={selection.rows}
         total={selection.total}
@@ -140,11 +141,12 @@ function Review({
 
   const accounts = [...new Map(rows.map((row) => [row.account_id, row.account_name])).values()];
   const first = rows.filter((row) => row.account_name === accounts[0]);
+  const noticeRows = first.length > 0 ? first : rows;
   const firstTotal = fromPaise(
-    first.reduce((sum, row) => sum + toPaise(row.amount_outstanding), 0n),
+    noticeRows.reduce((sum, row) => sum + toPaise(row.amount_outstanding), 0n),
   );
-  const followUps = rows.reduce((sum, row) => sum + row.follow_ups, 0);
-  const oldest = Math.max(...rows.map((row) => row.days_overdue));
+  const followUps = noticeRows.reduce((sum, row) => sum + row.follow_ups, 0);
+  const oldest = Math.max(...noticeRows.map((row) => row.days_overdue));
   const today = formatShortDate(istDateOf(data.as_of));
 
   const send = useMutation({
@@ -205,7 +207,7 @@ function Review({
             <p className="mt-4 text-body font-bold">
               Subject: Legal notice for recovery of{" "}
               <span className="tnum">{formatINR(firstTotal)}</span> due under{" "}
-              {first.map((row) => row.invoice_number).join(", ")}
+              {noticeRows.map((row) => row.invoice_number).join(", ")}
             </p>
             <p className="mt-3 text-body leading-relaxed font-normal">
               Under instructions from and on behalf of my client, {orgName}
@@ -266,26 +268,19 @@ function Review({
           </dl>
           <div className="border-t border-hairline pt-4">
             <p className="text-eyebrow font-semibold tracking-widest text-fg-muted uppercase">
-              Attached to the matter
+              Sent with the request
             </p>
             <ul className="mt-2 space-y-1.5 text-body font-normal">
               {rows.map((row) => (
                 <li key={row.invoice_id} className="flex justify-between gap-3">
-                  <span>{row.invoice_number}.pdf</span>
-                  <span className="text-fg-muted">Invoice</span>
+                  <span>{row.invoice_number}</span>
+                  <span className="text-fg-muted">{row.account_name}</span>
                 </li>
               ))}
-              <li className="flex justify-between gap-3">
-                <span>Ledger statement</span>
-                <span className="text-fg-muted">From your books</span>
-              </li>
-              <li className="flex justify-between gap-3">
-                <span>Follow-up log</span>
-                <span className="text-fg-muted">{followUps} follow-ups</span>
-              </li>
             </ul>
             <p className="mt-3 rounded-nav border border-accent-edge bg-accent-tint px-3 py-2 text-prose font-semibold text-accent">
-              Your {followUps} follow-ups are attached as evidence of prior demand.
+              The request sends these invoice ids, the advocate, and the demand text. This notice
+              cites {followUps} follow-ups as prior demand.
             </p>
           </div>
           <div className="flex items-center gap-2 border-t border-hairline pt-4">

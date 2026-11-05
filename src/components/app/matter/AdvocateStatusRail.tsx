@@ -7,7 +7,7 @@ import { formatINR, formatShortDate } from "@/lib/format";
 import type { MatterDetail, MatterStage } from "@/lib/schemas/legal";
 import { featureErrorMessage } from "@/lib/services/feature-api";
 import { legalQueryKeys, updateAdvocateMatter } from "@/lib/services/legal";
-import { ADVOCATE_STAGES, stageLabel } from "@/lib/services/legal-rules";
+import { ADVOCATE_STAGES, isClosedStage, stageLabel } from "@/lib/services/legal-rules";
 
 /** Hover copy for actions whose backend isn't built yet. */
 const COMING_SOON = "Coming soon";
@@ -30,7 +30,9 @@ export function AdvocateStatusRail({ detail, advocateName }: AdvocateStatusRailP
   return (
     <div className="space-y-4">
       <RailCard title="Status">
-        {accepted ? (
+        {isClosedStage(detail.stage) ? (
+          <p className="text-prose text-fg-soft">This matter is closed. The record is read-only.</p>
+        ) : accepted ? (
           <StatusForm detail={detail} advocateName={advocateName} />
         ) : (
           <p className="text-prose text-fg-soft">

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { CalendarDays, LogOut } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -108,6 +108,8 @@ function PortalBar({ name }: { name: string }) {
       await signOut();
       queryClient.clear();
       await navigate({ to: "/login" });
+    } catch (error) {
+      toast(featureErrorMessage(error, "Couldn't sign out."));
     } finally {
       setSigningOut(false);
     }
@@ -220,15 +222,15 @@ function OpenMatter({ matterId, advocateName }: { matterId: string; advocateName
   const queryClient = useQueryClient();
   const matterQuery = useQuery({
     queryKey: legalQueryKeys.matter("advocate", matterId),
-    queryFn: () => getMatter("advocate", matterId),
+    queryFn: async () => {
+      const matter = await getMatter("advocate", matterId);
+      // The read clears `unread`. Refresh the list only after that write lands,
+      // so a cached success cannot refetch the list while the dot is still on.
+      await queryClient.invalidateQueries({ queryKey: legalQueryKeys.advocateMatters });
+      return matter;
+    },
     retry: false,
   });
-
-  // Opening a matter marks it read on the server; refresh the list's dot.
-  const loaded = matterQuery.isSuccess;
-  useEffect(() => {
-    if (loaded) void queryClient.invalidateQueries({ queryKey: legalQueryKeys.advocateMatters });
-  }, [loaded, queryClient]);
 
   return (
     <div className="space-y-4" aria-busy={matterQuery.isPending || undefined}>
@@ -364,7 +366,7 @@ function AcceptStrip({ detail, advocateName }: { detail: MatterDetail; advocateN
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: legalQueryKeys.all });
-      toast(`Matter accepted. ${detail.client_name} has been told.`);
+      toast("Matter accepted.");
     },
     onError: (error) => toast(featureErrorMessage(error, "Couldn't accept this matter.")),
   });
