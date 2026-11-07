@@ -43,7 +43,14 @@ const NOT_JSON = Symbol("not-json");
  * Performs one request against `/api/v1` and hands back the decoded body.
  *
  * `comingSoon` is the copy shown while the endpoint does not exist yet — each
- * feature words it for its own screen.
+ * feature words it for its own screen. Resolves to undefined for HTTP 204.
+ * Uses a 15-second timeout unless `init.signal` supplies cancellation.
+ *
+ * Rejects with FeatureApiError(NOT_AVAILABLE, comingSoon) for HTTP 404,
+ * successful non-JSON or malformed JSON responses, and failed responses with
+ * a string `error`. Other failed responses reject with the envelope's
+ * FeatureApiError, or Error if the envelope is invalid. Fetch failures,
+ * including cancellation and timeout, propagate unchanged.
  */
 export async function featureRequest(
   path: string,
@@ -95,7 +102,10 @@ export async function featureRequest(
   return body;
 }
 
-/** A JSON write: same handling as a read, with the body serialised. */
+/**
+ * A JSON write with the response and rejection behavior of `featureRequest`.
+ * Propagates synchronous JSON.stringify errors, such as circular payloads.
+ */
 export function featureWrite(
   path: string,
   method: "POST" | "PUT" | "PATCH",

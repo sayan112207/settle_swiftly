@@ -125,7 +125,13 @@ export async function getAdvocateMatters(): Promise<MatterSummary[]> {
 
 /**
  * `GET /api/v1/legal/matters/{id}` or `GET /api/v1/advocate/matters/{id}`.
- * The advocate's read marks the matter read (clears `unread`).
+ * Returns the parsed detail for the chosen viewer. In mocks, an advocate
+ * read clears `unread` in the matter list; the returned detail is unchanged.
+ * The live advocate endpoint is expected to mark the matter read.
+ *
+ * Rejects with FeatureApiError("not_found") for an unknown mock matter,
+ * ZodError for an invalid payload, or a public-environment validation error.
+ * Live request failures propagate as described by `featureRequest`.
  */
 export async function getMatter(viewer: MatterViewer, matterId: string): Promise<MatterDetail> {
   if (getPublicEnv().useMocks) {
@@ -281,8 +287,16 @@ function mockDetails(matterId: string): MatterDetail[] {
 const mockUploads = new Map<string, Attachment>();
 
 /**
- * `POST {matter}/attachments` (multipart). Reports progress from 0 to 100.
- * The file is checked before it leaves the browser; the server checks again.
+ * `POST {matter}/attachments` (multipart). Returns parsed attachment metadata.
+ * Checks the filename extension and size before uploading. `onProgress` gets
+ * percentages: mocks simulate intermediate steps; live uploads report only 0
+ * before the request and 100 after it resolves. `signal` cancels the request
+ * or is checked between mock progress steps.
+ *
+ * Rejects with FeatureApiError("invalid_file") for a rejected file, AbortError
+ * when mock cancellation is observed, or ZodError for invalid metadata.
+ * Public-environment validation errors, progress callback errors, and live
+ * request failures from `featureRequest` propagate to the caller.
  */
 export async function uploadMatterAttachment(
   viewer: MatterViewer,
@@ -323,7 +337,17 @@ export async function uploadMatterAttachment(
   return attachmentSchema.parse(body);
 }
 
-/** `POST {matter}/messages`. The message joins the record for both sides. */
+/**
+ * `POST {matter}/messages`. Returns the parsed message added to the record.
+ * `authorName` supplies the mock author's name and is not sent to the API.
+ * Mocks append the message and known uploaded attachments to both views and
+ * mark business messages unread for the advocate; unknown attachment ids
+ * are ignored in mocks.
+ *
+ * Rejects with ZodError for invalid input or output, including an empty
+ * message with no attachments. Public-environment validation errors and
+ * live request failures from `featureRequest` propagate to the caller.
+ */
 export async function postMatterMessage(
   viewer: MatterViewer,
   matterId: string,
@@ -398,7 +422,15 @@ export async function withdrawMatterMessage(
 
 /**
  * `PATCH /api/v1/advocate/matters/{id}`. A stage or deadline change adds an
- * entry to the record — the record is the audit trail.
+ * entry to the record — the record is the audit trail. A null
+ * `next_deadline_on` clears the deadline. `advocateName` labels mock events
+ * and is not sent to the API. Mocks update both views, mark acceptance, and
+ * set the closure date for recovered or closed stages.
+ *
+ * Rejects with ZodError for invalid input, FeatureApiError("not_found") for
+ * an unknown mock matter, or FeatureApiError("invalid") for a closed mock
+ * matter. Public-environment validation errors and live request failures
+ * from `featureRequest` propagate to the caller.
  */
 export async function updateAdvocateMatter(
   matterId: string,

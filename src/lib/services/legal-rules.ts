@@ -19,7 +19,12 @@ export function escalationEligible(items: readonly EligibleInvoice[]): EligibleI
   return items.filter((item) => item.follow_ups >= MIN_FOLLOW_UPS);
 }
 
-/** Money string → integer paise, without a float touching the paise. */
+/**
+ * Converts a decimal rupee string to integer paise without floating-point math.
+ * Pads missing fractional digits with zeros and truncates digits after the
+ * second decimal place. Preserves a leading minus sign.
+ * Throws SyntaxError if either parsed component cannot be converted to BigInt.
+ */
 export function toPaise(value: string): bigint {
   const negative = value.trim().startsWith("-");
   const [whole = "0", fraction = ""] = value.trim().replace(/^-/, "").split(".");
@@ -41,6 +46,7 @@ export function fromPaise(paise: bigint): string {
  *
  * Pinned to Asia/Kolkata for the same reason `format.ts` pins its formatters:
  * the server and browser must agree on which day "as of" is.
+ * Throws RangeError if the timestamp produces an invalid date.
  */
 export function istDateOf(isoTimestamp: string): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -257,6 +263,8 @@ export type ThreadDay = { day: string; label: string; entries: ThreadEntry[] };
  * The thread split into days, in Indian time, oldest first. A day separator
  * reads "28 July 2026". Entries are ordered by when they happened, so a
  * payload that arrives out of order still reads as one record.
+ * Returns an empty array for no entries; leaves the input order unchanged.
+ * Throws RangeError if an entry's timestamp produces an invalid date.
  */
 export function groupThreadByDay(entries: readonly ThreadEntry[]): ThreadDay[] {
   const ordered = [...entries].sort(
@@ -285,7 +293,10 @@ const threadTimeFormatter = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
 });
 
-/** "28 Jul, 10:02", in Indian time — the stamp on every message. */
+/**
+ * "28 Jul, 10:02", in Indian time — the stamp on every message.
+ * Throws RangeError if `iso` produces an invalid date.
+ */
 export function formatThreadTime(iso: string): string {
   const parts = threadTimeFormatter.formatToParts(new Date(iso));
   const get = (type: Intl.DateTimeFormatPartTypes) =>
@@ -313,7 +324,9 @@ function extensionOf(name: string): string {
 
 /**
  * Why a file can't be attached, or null when it can. Messages name the file
- * and say what to do, per the voice rules.
+ * and say what to do, per the voice rules. Checks the filename extension
+ * case-insensitively, not the file contents or MIME type. `size` is in bytes;
+ * exactly 25 * 1024 * 1024 bytes is allowed.
  */
 export function attachmentError(file: { name: string; size: number }): string | null {
   const extension = extensionOf(file.name);
