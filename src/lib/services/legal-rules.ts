@@ -106,6 +106,49 @@ export function selectionSummary(
   return { count: rows.length, total: fromPaise(total), rows };
 }
 
+export type AccountNotice = {
+  accountId: string;
+  accountName: string;
+  rows: EligibleInvoice[];
+  total: string;
+  followUps: number;
+  oldest: number;
+};
+
+/**
+ * One notice's figures per account, in first-seen order. A multi-account
+ * review still sends one demand text, so the preview must not mix one
+ * account's overdue age or reminder count into another's letter.
+ */
+export function noticesByAccount(rows: readonly EligibleInvoice[]): AccountNotice[] {
+  const order: string[] = [];
+  const groups = new Map<string, EligibleInvoice[]>();
+  for (const row of rows) {
+    const existing = groups.get(row.account_id);
+    if (existing === undefined) {
+      order.push(row.account_id);
+      groups.set(row.account_id, [row]);
+    } else {
+      existing.push(row);
+    }
+  }
+  return order.map((accountId) => {
+    const accountRows = groups.get(accountId) ?? [];
+    const total = accountRows.reduce((sum, row) => sum + toPaise(row.amount_outstanding), 0n);
+    return {
+      accountId,
+      accountName: accountRows[0]?.account_name ?? "",
+      rows: accountRows,
+      total: fromPaise(total),
+      followUps: accountRows.reduce((sum, row) => sum + row.follow_ups, 0),
+      oldest: accountRows.reduce((max, row) => Math.max(max, row.days_overdue), 0),
+    };
+  });
+}
+
+/** Demand amount when one request covers more than one account. */
+export const SHARED_DEMAND_AMOUNT = "the outstanding amount under the invoices above";
+
 /** "A", "A and B", "A, B and C". Duplicate names are listed once. */
 export function joinNames(names: readonly string[]): string {
   const unique = [...new Set(names)];

@@ -13,7 +13,7 @@ A matter has one thread and one set of documents. Each side gets its own view of
 
 ## 1. Frontend status
 
-The screens are complete against mocks (`VITE_USE_MOCKS=true`). With mocks off, a 404, a non-JSON body, or a plain-string `error` means **not built yet**. The UI then shows "coming soon": "Legal escalation is coming soon." or "The advocate portal is coming soon."
+The screens are complete against mocks (`VITE_USE_MOCKS=true`). With mocks off, a 404 **without** the contract error envelope, a non-JSON body, or a plain-string `error` means **not built yet**. The UI then shows "coming soon": "Legal escalation is coming soon." or "The advocate portal is coming soon." A 404 **with** the envelope is a real miss — for example an advocate asking for a matter that is not assigned to them — and the UI shows that message.
 
 Some actions are rendered but disabled with a "Coming soon" tooltip until they have endpoints:
 

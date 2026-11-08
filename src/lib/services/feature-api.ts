@@ -46,11 +46,13 @@ const NOT_JSON = Symbol("not-json");
  * feature words it for its own screen. Resolves to undefined for HTTP 204.
  * Uses a 15-second timeout unless `init.signal` supplies cancellation.
  *
- * Rejects with FeatureApiError(NOT_AVAILABLE, comingSoon) for HTTP 404,
- * successful non-JSON or malformed JSON responses, and failed responses with
- * a string `error`. Other failed responses reject with the envelope's
- * FeatureApiError, or Error if the envelope is invalid. Fetch failures,
- * including cancellation and timeout, propagate unchanged.
+ * Rejects with FeatureApiError(NOT_AVAILABLE, comingSoon) for HTTP 404 without
+ * the contract error envelope, successful non-JSON or malformed JSON responses,
+ * and failed responses with a string `error`. A 404 that carries the envelope
+ * is a real miss — for example an advocate asking for a matter they are not
+ * assigned. Other failed responses reject with the envelope's FeatureApiError,
+ * or Error if the envelope is invalid. Fetch failures, including cancellation
+ * and timeout, propagate unchanged.
  */
 export async function featureRequest(
   path: string,
@@ -68,12 +70,19 @@ export async function featureRequest(
   if (response.status === 204) return undefined;
 
   const isJson = response.headers.get("content-type")?.includes("application/json") ?? false;
-  if (response.status === 404 || (response.ok && !isJson)) {
+  if (response.ok && !isJson) {
     throw new FeatureApiError(NOT_AVAILABLE, comingSoon);
   }
 
   const body: unknown = await response.json().catch(() => NOT_JSON);
   if (response.ok && body === NOT_JSON) {
+    throw new FeatureApiError(NOT_AVAILABLE, comingSoon);
+  }
+  if (response.status === 404) {
+    const parsed = apiErrorSchema.safeParse(body);
+    if (parsed.success) {
+      throw new FeatureApiError(parsed.data.error.code, parsed.data.error.message);
+    }
     throw new FeatureApiError(NOT_AVAILABLE, comingSoon);
   }
   // With no server route for the path, the framework answers with a bare

@@ -116,7 +116,7 @@ function Ladder({ data, invoiceIds }: { data: EligibleResponse; invoiceIds: stri
               You&apos;re registered as a {size} Enterprise — {qualifyLabel(selection.count)}.
             </p>
           ) : (
-            <StatutoryClosedNote isTrader={data.seller.is_trader} />
+            <StatutoryClosedNote seller={data.seller} />
           )}
           <AppButton disabled title={COMING_SOON}>
             Draft notice
@@ -135,7 +135,7 @@ function Ladder({ data, invoiceIds }: { data: EligibleResponse; invoiceIds: stri
             ["Ends relationship", "Usually ends"],
           ]}
         >
-          {statutory ? null : <StatutoryClosedNote isTrader={data.seller.is_trader} />}
+          {statutory ? null : <StatutoryClosedNote seller={data.seller} />}
           <AppButton variant="secondary" disabled title={COMING_SOON}>
             Prepare filing
           </AppButton>
@@ -192,12 +192,20 @@ function Ladder({ data, invoiceIds }: { data: EligibleResponse; invoiceIds: stri
 }
 
 /** Shown on a statutory route the org can't use, with the way to open it. */
-function StatutoryClosedNote({ isTrader }: { isTrader: boolean }) {
-  if (isTrader) {
+function StatutoryClosedNote({ seller }: { seller: EligibleResponse["seller"] }) {
+  if (seller.is_trader) {
     return (
       <p className="text-prose text-fg-soft">
         These routes are for micro and small manufacturers and service providers. A trader&apos;s
         Udyam registration covers priority-sector lending.
+      </p>
+    );
+  }
+  if (seller.udyam_registered) {
+    return (
+      <p className="text-prose text-fg-soft">
+        These routes are open to micro and small enterprises only. Your registered size does not
+        qualify.
       </p>
     );
   }

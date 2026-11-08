@@ -226,7 +226,7 @@ function OpenMatter({ matterId, advocateName }: { matterId: string; advocateName
       const matter = await getMatter("advocate", matterId);
       // The read clears `unread`. Refresh the list only after that write lands,
       // so a cached success cannot refetch the list while the dot is still on.
-      await queryClient.invalidateQueries({ queryKey: legalQueryKeys.advocateMatters });
+      void queryClient.invalidateQueries({ queryKey: legalQueryKeys.advocateMatters });
       return matter;
     },
     retry: false,

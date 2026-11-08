@@ -15,13 +15,13 @@ import { featureErrorMessage } from "@/lib/services/feature-api";
 import { createMatters, getAdvocates, getEligible, legalQueryKeys } from "@/lib/services/legal";
 import {
   defaultDemandText,
-  fromPaise,
   istDateOf,
   MATTER_FEE,
+  noticesByAccount,
   parseInvoiceIds,
   selectionSummary,
+  SHARED_DEMAND_AMOUNT,
   statutoryRoutesOpen,
-  toPaise,
   totalMatterCost,
 } from "@/lib/services/legal-rules";
 
@@ -136,19 +136,16 @@ function Review({
   const queryClient = useQueryClient();
   const demandId = useId();
   const statutory = statutoryRoutesOpen(data.seller);
-  const [demand, setDemand] = useState(() => defaultDemandText(formatINR(total), statutory));
-  const [confirming, setConfirming] = useState(false);
-
-  const accounts = [...new Map(rows.map((row) => [row.account_id, row.account_name])).values()];
-  const first = rows.filter((row) => row.account_name === accounts[0]);
-  const noticeRows = first.length > 0 ? first : rows;
-  const firstTotal = fromPaise(
-    noticeRows.reduce((sum, row) => sum + toPaise(row.amount_outstanding), 0n),
+  const notices = noticesByAccount(rows);
+  const preview = notices[0];
+  const accounts = notices.map((notice) => notice.accountName);
+  const [demand, setDemand] = useState(() =>
+    defaultDemandText(
+      notices.length > 1 ? SHARED_DEMAND_AMOUNT : formatINR(total),
+      statutory,
+    ),
   );
-  const followUps = noticeRows.reduce((sum, row) => sum + row.follow_ups, 0);
-  const oldest = Math.max(...noticeRows.map((row) => row.days_overdue));
-  const today = formatShortDate(istDateOf(data.as_of));
-
+  const [confirming, setConfirming] = useState(false);
   const send = useMutation({
     mutationFn: () =>
       createMatters({
@@ -170,6 +167,13 @@ function Review({
     onError: (error) => toast(featureErrorMessage(error, "Couldn't send the matter.")),
   });
 
+  if (preview === undefined) return null;
+
+  const noticeRows = preview.rows;
+  const followUps = preview.followUps;
+  const oldest = preview.oldest;
+  const today = formatShortDate(istDateOf(data.as_of));
+
   return (
     <>
       <h1 className="text-title font-bold tracking-tight text-fg">Review before sending</h1>
@@ -183,9 +187,10 @@ function Review({
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1">
-          {accounts.length > 1 ? (
+          {notices.length > 1 ? (
             <p className="mb-2 text-prose text-fg-soft">
-              Notice 1 of {accounts.length} · {accounts[0]}. The others follow the same text.
+              Notice 1 of {notices.length} · {preview.accountName}. Each notice uses that
+              account&apos;s follow-ups and overdue age.
             </p>
           ) : null}
           <article className="rounded-card border border-hairline bg-card px-12 py-10 font-serif text-fg">
@@ -206,7 +211,7 @@ function Review({
             </p>
             <p className="mt-4 text-body font-bold">
               Subject: Legal notice for recovery of{" "}
-              <span className="tnum">{formatINR(firstTotal)}</span> due under{" "}
+              <span className="tnum">{formatINR(preview.total)}</span> due under{" "}
               {noticeRows.map((row) => row.invoice_number).join(", ")}
             </p>
             <p className="mt-3 text-body leading-relaxed font-normal">

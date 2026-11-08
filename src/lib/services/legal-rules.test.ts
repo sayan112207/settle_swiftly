@@ -19,12 +19,14 @@ import {
   joinNames,
   MIN_FOLLOW_UPS,
   nextStepForStage,
+  noticesByAccount,
   parseInvoiceIds,
   qualifyLabel,
   routeCount,
   selectableIds,
   selectionSummary,
   serialiseInvoiceIds,
+  SHARED_DEMAND_AMOUNT,
   stageStrip,
   statutoryRoutesOpen,
   totalMatterCost,
@@ -103,6 +105,22 @@ describe("eligible list", () => {
     );
     expect(summary.count).toBe(1);
     expect(summary.total).toBe("72000.00");
+  });
+
+  test("notice figures stay on their own account", () => {
+    const notices = noticesByAccount(
+      eligibleFixture.items.filter((item) => item.lock === null),
+    );
+    expect(notices).toHaveLength(2);
+    expect(notices[0]?.accountName).toBe("Kaveri & Sons");
+    expect(notices[0]?.total).toBe("72000.00");
+    expect(notices[0]?.followUps).toBe(5);
+    expect(notices[0]?.oldest).toBe(108);
+    expect(notices[1]?.accountName).toBe("Raghav & Co Traders");
+    expect(notices[1]?.total).toBe("45000.00");
+    expect(notices[1]?.followUps).toBe(7);
+    expect(notices[1]?.oldest).toBe(102);
+    expect(SHARED_DEMAND_AMOUNT).toBe("the outstanding amount under the invoices above");
   });
 });
 
