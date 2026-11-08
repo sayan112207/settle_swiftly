@@ -108,9 +108,7 @@ describe("eligible list", () => {
   });
 
   test("notice figures stay on their own account", () => {
-    const notices = noticesByAccount(
-      eligibleFixture.items.filter((item) => item.lock === null),
-    );
+    const notices = noticesByAccount(eligibleFixture.items.filter((item) => item.lock === null));
     expect(notices).toHaveLength(2);
     expect(notices[0]?.accountName).toBe("Kaveri & Sons");
     expect(notices[0]?.total).toBe("72000.00");

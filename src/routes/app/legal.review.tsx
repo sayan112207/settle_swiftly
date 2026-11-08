@@ -140,10 +140,7 @@ function Review({
   const preview = notices[0];
   const accounts = notices.map((notice) => notice.accountName);
   const [demand, setDemand] = useState(() =>
-    defaultDemandText(
-      notices.length > 1 ? SHARED_DEMAND_AMOUNT : formatINR(total),
-      statutory,
-    ),
+    defaultDemandText(notices.length > 1 ? SHARED_DEMAND_AMOUNT : formatINR(total), statutory),
   );
   const [confirming, setConfirming] = useState(false);
   const send = useMutation({
