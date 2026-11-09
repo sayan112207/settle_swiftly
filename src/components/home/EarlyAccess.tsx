@@ -18,7 +18,7 @@ type WaitlistState = {
   busy: boolean;
   done: boolean;
   doneEmail: string;
-  submit: (email: string, source: string) => Promise<string | null>;
+  submit: (email: string, source: string, company?: string) => Promise<string | null>;
 };
 
 const WaitlistContext = createContext<WaitlistState | null>(null);
@@ -36,10 +36,10 @@ export function WaitlistProvider({ children }: { children: ReactNode }) {
       busy,
       done: doneEmail !== "",
       doneEmail,
-      submit: async (email, source) => {
+      submit: async (email, source, company) => {
         setBusy(true);
         try {
-          const res = await joinWaitlist({ data: { email, source } });
+          const res = await joinWaitlist({ data: { email, source, company } });
           if (!res.ok) return res.message;
           setDoneEmail(email);
           return null;
@@ -96,16 +96,17 @@ export function EarlyAccessForm({ variant }: { variant: "hero" | "cta" | "footer
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (busy) return;
-    const parsed = joinWaitlistSchema.safeParse({ email });
+    const parsed = joinWaitlistSchema.safeParse({
+      email,
+      company: variant === "cta" ? company : undefined,
+    });
     if (!parsed.success) {
       setErr(parsed.error.issues[0]?.message ?? "Enter a work email, like name@company.com");
       document.getElementById(emailId)?.focus();
       return;
     }
     setErr("");
-    // Company is asked for on the closing form but not stored yet: the
-    // waitlist table has no column for it yet.
-    const msg = await submit(parsed.data.email, `home-${variant}`);
+    const msg = await submit(parsed.data.email, `home-${variant}`, parsed.data.company);
     if (msg) setErr(msg);
   };
 
