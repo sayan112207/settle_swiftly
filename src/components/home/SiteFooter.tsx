@@ -34,27 +34,14 @@ const COLS: Col[] = [
   {
     key: "company",
     title: "Company",
-    links: [
-      { label: "About", href: LINKS.about },
-      { label: "Security", href: LINKS.security },
-      { label: "Contact", href: LINKS.contact },
-      { label: "Talk to the founders", href: LINKS.book, book: true },
-    ],
-  },
-  {
-    key: "legal",
-    title: "Legal",
-    links: [
-      { label: "Privacy", href: LINKS.privacy },
-      { label: "Terms", href: LINKS.terms },
-    ],
+    links: [{ label: "Talk to the founders", href: LINKS.book, book: true }],
   },
 ];
 
 /**
- * The marketing site's footer: logo and compact early-access form, four link
- * columns (accordions below 768px), placeholder contact line, and the legal
- * disclaimer. Must sit under a WaitlistProvider.
+ * The marketing site's footer: logo and compact early-access form, link
+ * columns (accordions below 768px) and the legal disclaimer. Legal, contact and
+ * company-page links return once those pages exist. Must sit under a WaitlistProvider.
  */
 export function SiteFooter() {
   const { armed } = useMotion();
@@ -116,18 +103,6 @@ export function SiteFooter() {
             );
           })}
         </nav>
-        {/* Placeholders from the design, to be filled in. */}
-        <p className="sfx">
-          <span>[contact email]</span>
-          <span className="dot" aria-hidden="true">
-            ·
-          </span>
-          <span>[City], India</span>
-          <span className="dot" aria-hidden="true">
-            ·
-          </span>
-          <span>[LinkedIn]</span>
-        </p>
         <div className="sfb">
           <p className="copy">
             © <span className="mono">{new Date().getFullYear()}</span> Settle Swiftly

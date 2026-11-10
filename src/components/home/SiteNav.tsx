@@ -462,15 +462,6 @@ export function SiteNav({ current, hero = false }: { current: string; hero?: boo
                   <div className="wrap snpi">
                     <div className="snp1">
                       <div className="snlist">
-                        <a href={LINKS.about} aria-current={pg("about")}>
-                          About
-                        </a>
-                        <a href={LINKS.security} aria-current={pg("security")}>
-                          Security
-                        </a>
-                        <a href={LINKS.contact} aria-current={pg("contact")}>
-                          Contact
-                        </a>
                         <a href={LINKS.book} {...bookProps}>
                           Talk to the founders
                           <span className="ext" aria-hidden="true">
@@ -587,15 +578,6 @@ export function SiteNav({ current, hero = false }: { current: string; hero?: boo
               <PlusMinus />
             </button>
             <div className="snac" id="sna-company">
-              <a href={LINKS.about} aria-current={pg("about")}>
-                About
-              </a>
-              <a href={LINKS.security} aria-current={pg("security")}>
-                Security
-              </a>
-              <a href={LINKS.contact} aria-current={pg("contact")}>
-                Contact
-              </a>
               <a href={LINKS.book} {...bookProps}>
                 Talk to the founders
                 <span className="ext" aria-hidden="true">

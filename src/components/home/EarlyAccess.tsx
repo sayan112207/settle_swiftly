@@ -132,6 +132,7 @@ export function EarlyAccessForm({ variant }: { variant: "hero" | "cta" | "footer
               setErr("");
             }}
             aria-invalid={err ? "true" : "false"}
+            aria-required="true"
             aria-describedby={err ? errId : undefined}
             style={variant === "cta" ? { flex: "2 1 260px" } : undefined}
           />

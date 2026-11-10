@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { WaitlistProvider } from "./EarlyAccess";
 import { FeatureStage } from "./FeatureStage";
 import { HomeHero } from "./HomeHero";
-import { Approval, ClosingCta, People, Problem, Questions } from "./HomeSections";
+import { Approval, ClosingCta, Problem, Questions } from "./HomeSections";
 import { HowItWorks } from "./HowItWorks";
 import { InkFilter } from "./marks";
 import { vars } from "./style";
@@ -249,7 +249,6 @@ export function HomePage() {
               </div>
             </section>
 
-            <People />
             <Questions />
             <ClosingCta />
           </main>

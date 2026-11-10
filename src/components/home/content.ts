@@ -24,8 +24,8 @@ export const LINKS = {
   contact: "/contact",
   privacy: "/privacy",
   terms: "/terms",
-  /** "Talk to the founders": a booking link once there is one, else Contact. */
-  book: "/contact",
+  /** "Talk to the founders": a booking link once there is one, else the early-access form. */
+  book: "/#access",
 } as const;
 
 /** Flip on when feature pages ship: the stage then shows "Read more" per feature. */

@@ -67,9 +67,9 @@ export function FeatureStage({ autoAdvance = true }: { autoAdvance?: boolean }) 
       Home: 0,
       End: n - 1,
     };
-    e.preventDefault();
     const j = map[e.key];
     if (j === undefined) return;
+    e.preventDefault();
     setActive(j);
     setPicked(true);
     setTimeout(() => document.getElementById(`ft-${j}`)?.focus(), 0);
