@@ -21,10 +21,9 @@ import { signOut } from "@/lib/services/auth.service";
  * hover grey and the app palette to brand green. Without it every accent
  * surface in the app — filled buttons, link-style buttons — renders pale grey.
  *
- * All eight nav items are present and navigable from this build. Only the
- * Dashboard has a real screen; the rest render a bare heading. They are not
- * disabled and not hidden — 21 later screens copy this nav, so it has to be
- * structurally complete now rather than grown one item at a time.
+ * Every nav item is present and navigable. Order follows the system brief:
+ * Dashboard · Accounts · Invoices · Add entries · Payments · Chasing · Legal ·
+ * Reports · Settings.
  */
 
 const NAV_ITEMS = [
@@ -34,6 +33,7 @@ const NAV_ITEMS = [
   { label: "Add entries", to: "/app/add-entries" },
   { label: "Payments", to: "/app/payments" },
   { label: "Chasing", to: "/app/chasing" },
+  { label: "Legal", to: "/app/legal" },
   { label: "Reports", to: "/app/reports" },
   { label: "Settings", to: "/app/settings" },
 ] as const;
