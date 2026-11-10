@@ -36,11 +36,20 @@ const COLS: Col[] = [
     title: "Company",
     links: [{ label: "Talk to the founders", href: LINKS.book, book: true }],
   },
+  {
+    key: "legal",
+    title: "Legal",
+    links: [
+      { label: "Terms", href: LINKS.terms },
+      { label: "Privacy", href: LINKS.privacy },
+      { label: "Refund", href: LINKS.refund },
+    ],
+  },
 ];
 
 /**
  * The marketing site's footer: logo and compact early-access form, link
- * columns (accordions below 768px) and the legal disclaimer. Legal, contact and
+ * columns (accordions below 768px) and the legal disclaimer. Contact and
  * company-page links return once those pages exist. Must sit under a WaitlistProvider.
  */
 export function SiteFooter() {
