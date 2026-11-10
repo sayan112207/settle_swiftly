@@ -14,7 +14,10 @@ import { Route as AdvocateRouteImport } from './routes/advocate'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RefundRouteImport } from './routes/refund'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAccountsRouteImport } from './routes/app/accounts'
 import { Route as AppAddEntriesRouteImport } from './routes/app/add-entries'
@@ -87,9 +90,24 @@ const OnboardingRoute = OnboardingRouteImport.update({
   path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RefundRoute = RefundRouteImport.update({
+  id: '/refund',
+  path: '/refund',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -344,7 +362,10 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/privacy': typeof PrivacyRoute
+  '/refund': typeof RefundRoute
   '/signup': typeof SignupRoute
+  '/terms': typeof TermsRoute
   '/app/accounts': typeof AppAccountsRouteWithChildren
   '/app/add-entries': typeof AppAddEntriesRoute
   '/app/chasing': typeof AppChasingRouteWithChildren
@@ -397,7 +418,10 @@ export interface FileRoutesByTo {
   '/advocate': typeof AdvocateRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/privacy': typeof PrivacyRoute
+  '/refund': typeof RefundRoute
   '/signup': typeof SignupRoute
+  '/terms': typeof TermsRoute
   '/app/add-entries': typeof AppAddEntriesRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/invoices': typeof AppInvoicesRoute
@@ -449,7 +473,10 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/privacy': typeof PrivacyRoute
+  '/refund': typeof RefundRoute
   '/signup': typeof SignupRoute
+  '/terms': typeof TermsRoute
   '/app/accounts': typeof AppAccountsRouteWithChildren
   '/app/add-entries': typeof AppAddEntriesRoute
   '/app/chasing': typeof AppChasingRouteWithChildren
@@ -505,7 +532,10 @@ export interface FileRouteTypes {
     | '/app'
     | '/login'
     | '/onboarding'
+    | '/privacy'
+    | '/refund'
     | '/signup'
+    | '/terms'
     | '/app/accounts'
     | '/app/add-entries'
     | '/app/chasing'
@@ -558,7 +588,10 @@ export interface FileRouteTypes {
     | '/advocate'
     | '/login'
     | '/onboarding'
+    | '/privacy'
+    | '/refund'
     | '/signup'
+    | '/terms'
     | '/app/add-entries'
     | '/app/dashboard'
     | '/app/invoices'
@@ -609,7 +642,10 @@ export interface FileRouteTypes {
     | '/app'
     | '/login'
     | '/onboarding'
+    | '/privacy'
+    | '/refund'
     | '/signup'
+    | '/terms'
     | '/app/accounts'
     | '/app/add-entries'
     | '/app/chasing'
@@ -664,7 +700,10 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
+  PrivacyRoute: typeof PrivacyRoute
+  RefundRoute: typeof RefundRoute
   SignupRoute: typeof SignupRoute
+  TermsRoute: typeof TermsRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   ApiV1ChasesRoute: typeof ApiV1ChasesRoute
   ApiV1DashboardChaseQueueRoute: typeof ApiV1DashboardChaseQueueRoute
@@ -727,11 +766,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/refund': {
+      id: '/refund'
+      path: '/refund'
+      fullPath: '/refund'
+      preLoaderRoute: typeof RefundRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/': {
@@ -1149,7 +1209,10 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
+  PrivacyRoute: PrivacyRoute,
+  RefundRoute: RefundRoute,
   SignupRoute: SignupRoute,
+  TermsRoute: TermsRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   ApiV1ChasesRoute: ApiV1ChasesRoute,
   ApiV1DashboardChaseQueueRoute: ApiV1DashboardChaseQueueRoute,

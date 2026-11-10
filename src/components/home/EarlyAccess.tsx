@@ -11,6 +11,7 @@ import {
 import { joinWaitlistSchema } from "@/lib/schemas/waitlist";
 import { joinWaitlist } from "@/lib/services/waitlist.service";
 
+import { LINKS } from "./content";
 import { StampSvg } from "./marks";
 import { stampDate, vars } from "./style";
 
@@ -157,6 +158,10 @@ export function EarlyAccessForm({ variant }: { variant: "hero" | "cta" | "footer
           <button className="btn btn-p" type="submit" disabled={busy}>
             {label}
           </button>
+          <p className="consent">
+            By joining, you agree to our <a href={LINKS.terms}>Terms</a> and{" "}
+            <a href={LINKS.privacy}>Privacy Policy</a>
+          </p>
           {err && (
             <p id={errId} className="err">
               {err}

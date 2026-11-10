@@ -3973,3 +3973,99 @@ html[data-ss-seen] .ldr {
 .snpi {
   padding-inline: var(--g);
 }
+
+/* ── Waitlist consent line ──────────────────────────── */
+.ss .consent,
+.sf .consent {
+  flex-basis: 100%;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--mut, var(--fogm));
+}
+.ss .consent a,
+.sf .consent a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── Legal pages (Terms, Privacy, Refund) ───────────── */
+.ss .lg {
+  padding: 120px var(--g) 80px;
+}
+.ss .lgw {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.ss .lgbn {
+  display: inline-block;
+  margin: 0 0 24px;
+  padding: 8px 14px;
+  border: 1px solid var(--pend);
+  border-radius: 6px;
+  color: var(--pend);
+  font-size: 14px;
+  font-weight: 600;
+}
+.ss .lgh {
+  margin: 0 0 12px;
+  font-size: clamp(32px, 6vw, 48px);
+  line-height: 1.1;
+}
+.ss .lglead {
+  font-size: 18px;
+  color: var(--fogm);
+}
+.ss .lgup {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--fogm);
+}
+.ss .lgtoc {
+  margin: 32px 0 8px;
+  padding: 20px 24px;
+  border: 1px solid var(--ld);
+  border-radius: 8px;
+  background: var(--night2);
+}
+.ss .lgtoc ol {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 15px;
+}
+.ss .lgtoc a:hover {
+  color: var(--mint);
+}
+.ss .lgs {
+  margin-top: 40px;
+  scroll-margin-top: 88px;
+}
+.ss .lgs h2 {
+  margin: 0 0 12px;
+  font-size: 22px;
+  line-height: 1.3;
+  color: #f4f1ea;
+}
+.ss .lgs p {
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+.ss .lgs ul {
+  margin: 0 0 12px;
+  padding-left: 22px;
+  display: grid;
+  gap: 8px;
+}
+.ss .lgs a {
+  color: var(--mint);
+  text-decoration: underline;
+}
+@media (max-width: 767px) {
+  .ss .lg {
+    padding-top: 96px;
+  }
+  .ss .lgtoc {
+    padding: 16px;
+  }
+}

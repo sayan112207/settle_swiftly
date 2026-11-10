@@ -18,12 +18,9 @@ export const LINKS = {
   pricing: "/#pricing",
   earlyAccess: "/#access",
   signIn: "/login",
-  // Planned pages, not built yet.
-  about: "/about",
-  security: "/security",
-  contact: "/contact",
-  privacy: "/privacy",
   terms: "/terms",
+  privacy: "/privacy",
+  refund: "/refund",
   /** "Talk to the founders": a booking link once there is one, else the early-access form. */
   book: "/#access",
 } as const;
